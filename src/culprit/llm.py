@@ -30,6 +30,7 @@ import hashlib
 import json
 import os
 import pathlib
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -94,6 +95,9 @@ class LLMClient:
     def __post_init__(self) -> None:
         self.api_key = self.api_key or load_api_key()
         self._client: Any = None
+        # Prewarming issues calls from a thread pool; the counters and the
+        # budget check are the only shared mutable state.
+        self._lock = threading.Lock()
         CACHE_DIR.mkdir(exist_ok=True)
 
     @property
@@ -125,7 +129,8 @@ class LLMClient:
         cache = self._cache_path(full)
         if self.use_cache and cache.exists():
             d = json.loads(cache.read_text())
-            self.n_cached += 1
+            with self._lock:
+                self.n_cached += 1
             return Reply(d["text"], 0.0, cached=True, model=self.model)
 
         if not self.api_key:
@@ -150,10 +155,11 @@ class LLMClient:
                 msg = self._sdk().messages.create(**kwargs)
                 text = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text").strip()
                 usd = price(self.model, msg.usage.input_tokens, msg.usage.output_tokens)
-                self.spent += usd
-                self.n_calls += 1
-                self.in_tokens += msg.usage.input_tokens
-                self.out_tokens += msg.usage.output_tokens
+                with self._lock:
+                    self.spent += usd
+                    self.n_calls += 1
+                    self.in_tokens += msg.usage.input_tokens
+                    self.out_tokens += msg.usage.output_tokens
                 if self.use_cache:
                     cache.write_text(json.dumps({"text": text, "usd": usd}))
                 return Reply(text, usd, False, self.model, msg.usage.input_tokens, msg.usage.output_tokens)

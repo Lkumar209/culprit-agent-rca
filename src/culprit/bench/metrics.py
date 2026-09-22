@@ -28,6 +28,11 @@ class Row:
     usd: float
     seconds: float
     abstained: bool
+    # Signed distance from the true culprit, in candidate-span positions.
+    # Negative = blamed something upstream of the cause; positive = blamed
+    # downstream, i.e. the symptom rather than the source. None when the
+    # prediction or the label is missing.
+    offset: int | None = None
 
 
 def score(verdict: Verdict, culprit: str | None) -> tuple[bool, float]:

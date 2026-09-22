@@ -140,9 +140,19 @@ class Injector:
                 res["vendor_id"] = alt
         elif f == "stale_amounts":
             # Plausible drift: last quarter's numbers, off by 5-25%.
+            #
+            # The per-invoice factor is derived from a *stable* key rather than
+            # a shared stateful RNG. A broken tool returns the same wrong thing
+            # every time you call it, and replay depends on that: with a
+            # stateful RNG the same call corrupted twice produced different
+            # amounts, so replaying changed the final answer for reasons that
+            # had nothing to do with the intervention. The label-free signal
+            # then fired on whichever span happened to be probed first, and
+            # this fault alone accounted for every miss it recorded.
             inv = [dict(i) for i in res.get("invoices", [])]
             for i in inv:
-                factor = 1 + self.rng.uniform(-0.25, -0.05)
+                r = random.Random(f"{f}|{self.seed}|{i.get('invoice_id')}")
+                factor = 1 + r.uniform(-0.25, -0.05)
                 i["amount_cents"] = max(1, int(i["amount_cents"] * factor))
             res["invoices"] = inv
         elif f == "unit_shift":

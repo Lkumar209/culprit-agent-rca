@@ -134,6 +134,40 @@ what design change came out of it.
   exp02's 95.2% is corpus composition, not the round-trip).
 - **Design change:** `_await_ingest` poll before any read in the demo path.
 
+## 2026-09-21 — Nondeterministic corruption (found by asking *where* a method fails)
+
+- **Purpose:** Counterfactual replay scored 0.952 under the label-free signal
+  and 1.000 under the gold-based one. Rather than report the 5-point gap as a
+  cost of going label-free, characterise it: which traces does it miss?
+- **Run:** `cf_exhaustive`, p_repair 1.0, label-free signal, 546 failed traces,
+  grouped by fault and by signed offset from the true culprit.
+- **Cost:** $0.
+- **Result:** All 26 misses came from a **single fault type** —
+  `stale_amounts`, 96.3% of that fault — and every one blamed a span
+  *upstream* of the culprit (offsets -2, -4, -6; zero downstream). A miss
+  pattern that clean is not a method limitation.
+- **Cause:** `stale_amounts` drew its per-invoice drift from the injector's
+  shared stateful RNG, so corrupting the same call twice produced different
+  amounts. Replay therefore ran in a *different* broken environment than the
+  original run: the final answer moved for reasons unrelated to the
+  intervention, and the "did the answer change" signal fired on whichever span
+  was probed first — always the earliest, hence the uniformly upstream misses.
+- **Design change:** The per-invoice factor is now derived from a stable key
+  (`fault | seed | invoice_id`) instead of a stateful RNG. A persistently
+  broken tool returns the same wrong thing every time it is called, which is
+  what the persistent-environment model is supposed to mean. Added
+  `test_corruption_is_deterministic` over all 9 faults and both phases.
+- **Effect on results:** The label-free signal went 0.952 → **1.000**, equal to
+  the gold-based signal. The reported "label-free costs ~5 points" was entirely
+  this artifact. The deployability claim gets *stronger*: on this benchmark the
+  signal a real Phoenix user can compute is as good as the one requiring gold
+  answers. exp01 was unaffected, as predicted — the gold-based signal requires
+  reaching the correct answer, which a spurious change does not produce.
+- **Note:** This is the third time an experiment exposed a flaw in the harness
+  rather than a property of a method. It is also the clearest argument for the
+  offset metric: top-1 accuracy alone said "95%, good enough" and hid a bug
+  that the direction-of-error breakdown made obvious in one table.
+
 ## PENDING — exp04, the LLM-judge arm
 
 - **Purpose:** The baseline a reviewer asks for first. If a model can just read

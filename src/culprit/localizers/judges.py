@@ -86,14 +86,36 @@ def render_trace(trace: Trace, spans: list[Any] | None = None) -> str:
 
 
 def _parse(text: str) -> dict[str, Any]:
-    """Models wrap JSON in prose and fences often enough to be worth handling."""
+    """
+    Extract the verdict. Models wrap JSON in prose and code fences often
+    enough to be worth handling, and a long `why` can run into the output
+    cap and truncate the closing brace.
+
+    The field-level fallback matters more than it looks: the verdict itself
+    (`span_id` / `wrong`) is emitted before the prose explanation, so a reply
+    cut off mid-sentence still carries the answer. Discarding it as unparseable
+    would score a correct judgement as a miss and quietly understate the
+    baseline this project is arguing against.
+    """
     m = re.search(r"\{.*\}", text, re.DOTALL)
-    if not m:
-        return {}
-    try:
-        return json.loads(m.group(0))
-    except json.JSONDecodeError:
-        return {}
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except json.JSONDecodeError:
+            pass
+    out: dict[str, Any] = {}
+    if sid := re.search(r'"span_id"\s*:\s*"([^"]+)"', text):
+        out["span_id"] = sid.group(1)
+    if wrong := re.search(r'"wrong"\s*:\s*(true|false)', text):
+        out["wrong"] = wrong.group(1) == "true"
+    if conf := re.search(r'"confidence"\s*:\s*([0-9.]+)', text):
+        try:
+            out["confidence"] = float(conf.group(1))
+        except ValueError:
+            pass
+    if why := re.search(r'"why"\s*:\s*"([^"]*)', text):
+        out["why"] = why.group(1)
+    return out
 
 
 class TraceJudge:

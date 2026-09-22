@@ -24,28 +24,13 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
 from collections import defaultdict
 
-from culprit.bench.corpus import build_corpus
+from culprit.bench.corpus import build_corpus, stratified
 from culprit.bench.metrics import aggregate, table, wilson
-from culprit.bench.run import by_visibility, headline, run_methods, save
+from culprit.bench.run import blame_direction, by_visibility, headline, run_methods, save
 from culprit.llm import LLMClient
 from culprit.localizers.counterfactual import ExhaustiveReplay, GuidedReplay
 from culprit.localizers.heuristics import FirstErrorLocalizer
 from culprit.localizers.judges import SpanJudge, TraceJudge, judge_scorer, render_trace, SYSTEM, TRACE_PROMPT
-
-
-def stratified(cases, n, seed=0):
-    """Balanced across fault types, so no single fault dominates the estimate."""
-    buckets = defaultdict(list)
-    for c in cases:
-        buckets[c.fault].append(c)
-    rng = random.Random(seed)
-    per = max(1, n // max(1, len(buckets)))
-    out = []
-    for f in sorted(buckets):
-        pool = sorted(buckets[f], key=lambda c: c.case_id)
-        rng.shuffle(pool)
-        out += pool[:per]
-    return out[:n]
 
 
 def main() -> int:
@@ -115,10 +100,18 @@ def main() -> int:
     print(f"  total spent ${llm.spent:.3f} over {llm.n_calls} calls ({llm.n_cached} cached)")
 
     print()
+    print('=' * 72)
+    print('FULL CORPUS (546 failed traces): whole-trace judge vs heuristic')
+    print('=' * 72)
     print(headline(rows))
     print(by_visibility(rows))
+    print(blame_direction(rows))
+    print('=' * 72)
+    print('SUBSAMPLE: per-span judge, judge-guided replay, causal reference')
+    print('=' * 72)
     print(headline(rows_sub))
     print(by_visibility(rows_sub))
+    print(blame_direction(rows_sub))
     save("exp04_judge_full", {"model": args.model, "scope": "full corpus"}, rows,
          extra={"spent_usd": llm.spent, "n_calls": llm.n_calls})
     save("exp04_judge_sub", {"model": args.model, "scope": f"{len(sub)}-trace stratified"}, rows_sub,

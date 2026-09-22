@@ -20,7 +20,7 @@ implicated; a span that does not is a bystander, however suspicious it looks.
 The obvious approach is to scroll the trace and blame the span with the error on
 it. On a benchmark of 546 failed agent runs with known ground truth, that
 heuristic gets **78.9% of overt failures and exactly 0.0% of silent ones** — and
-silent failures are 77% of the corpus.
+silent failures are 77% of the corpus (`n=547`).
 
 The reason is that in a multi-step agent the symptom and the cause are usually
 different spans. A tool that returns a truncated page of results, a stale
@@ -33,7 +33,7 @@ spans by how they look is searching the wrong place.
 
 ## Results
 
-Benchmark: 546 failed runs of a tool-using agent over a synthetic business
+Benchmark: 547 failed runs of a tool-using agent over a synthetic business
 domain, 9 fault types, median 11 spans per trace, one injected fault per run so
 the correct answer is known by construction.
 
@@ -42,9 +42,9 @@ the correct answer is known by construction.
 | method | top-1 | silent faults | overt faults | replays/trace |
 |---|---|---|---|---|
 | `last_span` | 0.000 | 0.000 | 0.000 | 0 |
-| `random` | 0.099 | 0.099 | 0.138 | 0 |
-| `earliest_tool` | 0.103 | 0.059 | 0.252 | 0 |
-| `first_error` | 0.178 | **0.000** | 0.789 | 0 |
+| `random` | 0.097 | 0.097 | 0.138 | 0 |
+| `earliest_tool` | 0.102 | 0.059 | 0.252 | 0 |
+| `first_error` | 0.177 | **0.000** | 0.789 | 0 |
 | `cf_bisect` | **1.000** | 1.000 | 1.000 | 3.7 |
 | `cf_exhaustive` | **1.000** | 1.000 | 1.000 | 4.7 |
 
@@ -54,11 +54,11 @@ not a product claim. Sweeping repair reliability downward
 
 | repair success | `cf_bisect` | `cf_exhaustive` | `cf_exhaustive` ×3 samples |
 |---|---|---|---|
-| 1.0 | 1.000 | 1.000 | 0.998 |
-| 0.9 | 0.844 | 0.907 | 0.998 |
-| 0.7 | 0.586 | 0.722 | 0.960 |
-| 0.5 | 0.357 | 0.544 | 0.855 |
-| 0.3 | 0.161 | 0.328 | 0.641 |
+| 1.0 | 1.000 | 1.000 | 1.000 |
+| 0.9 | 0.848 | 0.887 | 0.998 |
+| 0.7 | 0.536 | 0.667 | **0.976** |
+| 0.5 | 0.325 | 0.512 | 0.888 |
+| 0.3 | 0.161 | 0.324 | 0.676 |
 
 Three things fall out of this:
 
@@ -67,16 +67,20 @@ Three things fall out of this:
    regardless of trace length, but its efficiency comes from committing to each
    probe, which is exactly what hurts when probes are noisy.
 3. **Sampling buys most of it back.** Probing each span three times restores
-   0.72 → 0.96 at p=0.7, for roughly 2.3× the replays.
+   0.67 → 0.98 at p=0.7, for roughly 2.1× the replays.
 
-**The label-free signal works.** Deciding "did the answer *change*" needs no
-ground truth and is what a real Phoenix user can compute; deciding "did the
-answer become *correct*" needs the gold answer. The label-free signal costs
-about 5 points (0.952 vs 1.000 at p=1.0) — so the method is deployable against
-unlabeled production traces.
+**The label-free signal costs nothing here — with a caveat that matters.**
+Deciding "did the answer *change*" needs no ground truth and is what a real
+Phoenix user can compute; deciding "did the answer become *correct*" needs the
+gold answer. On this benchmark the two agree exactly, at every repair
+probability. But they agree *because the benchmark injects exactly one fault
+per run*, so any intervention that changes the answer also corrects it. On a
+trace with several interacting problems they would diverge, and that case is
+untested. Read this as "label-free evaluation is viable", not "label-free
+evaluation is free".
 
 **It knows when to say nothing** (`experiments/exp03_abstention.py`). Pointed at
-runs that did not fail, counterfactual methods abstain on 97.6–100% of them.
+runs that did not fail, counterfactual methods abstain on 97.8–100% of them.
 Every heuristic names a suspect 100% of the time, because a heuristic always has
 a "last span" to point at.
 

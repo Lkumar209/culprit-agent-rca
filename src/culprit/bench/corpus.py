@@ -45,7 +45,7 @@ class Case:
             return None
         inj = make_injector(self.fault, world, self.target_step, self.seed)
         # Re-run to re-arm it on the same call signature the original hit.
-        run_agent(world, _task_of(world, self.task_id), injector=inj)
+        run_agent(world, _task_of(world, self.task_id), injector=inj, run_id=self.case_id)
         return inj
 
 
@@ -74,7 +74,7 @@ def build_corpus(
     cases: list[Case] = []
 
     for task in tasks:
-        honest = run_agent(world, task)
+        honest = run_agent(world, task, run_id=f"{task.task_id}|honest")
         cases.append(
             Case(
                 case_id=f"{task.task_id}|honest", task_id=task.task_id, task_kind=task.kind,
@@ -86,7 +86,7 @@ def build_corpus(
             visibility = FAULT_CATALOG[fault][1]
             for step in target_steps:
                 inj = make_injector(fault, world, target_step=step, seed=step)
-                tr = run_agent(world, task, injector=inj)
+                tr = run_agent(world, task, injector=inj, run_id=f"{task.task_id}|{fault}|s{step}")
                 if not inj.fired:
                     continue
                 cases.append(
@@ -113,3 +113,27 @@ def summarize(cases: list[Case]) -> dict[str, Any]:
         "failed_by_task_kind": dict(Counter(c.task_kind for c in failed)),
         "median_spans": sorted(len(c.trace.spans) for c in failed)[len(failed) // 2] if failed else 0,
     }
+
+
+def stratified(cases: list[Case], n: int, seed: int = 0) -> list[Case]:
+    """
+    A subsample balanced across fault types.
+
+    Uniform sampling would let the most frequently-firing faults dominate the
+    estimate, which matters here because the faults differ in exactly the
+    property under study -- whether they are visible in the span they corrupt.
+    """
+    import random
+    from collections import defaultdict
+
+    buckets: dict[str | None, list[Case]] = defaultdict(list)
+    for c in cases:
+        buckets[c.fault].append(c)
+    rng = random.Random(seed)
+    per = max(1, n // max(1, len(buckets)))
+    out: list[Case] = []
+    for f in sorted(buckets, key=str):
+        pool = sorted(buckets[f], key=lambda c: c.case_id)
+        rng.shuffle(pool)
+        out += pool[:per]
+    return out[:n]

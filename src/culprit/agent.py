@@ -25,6 +25,7 @@ unmodified against spans pulled back out of a live Phoenix instance.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import uuid
@@ -263,8 +264,23 @@ class ScriptedPolicy:
 # Run loop
 # --------------------------------------------------------------------------
 
-def _sid() -> str:
-    return uuid.uuid4().hex[:16]
+def _id_factory(run_id: str | None):
+    """
+    Span-id generator for one run.
+
+    Ids are derived from a stable `run_id` rather than drawn at random,
+    because they are not merely labels: they are rendered into every judge
+    prompt as the handle the model answers with. Random ids meant a fresh
+    corpus build produced different prompts for identical traces, so the
+    response cache could never hit across processes and every re-run paid the
+    full API cost again. Deterministic ids make the whole benchmark
+    byte-reproducible.
+
+    `run_id=None` keeps the old random behaviour for ad-hoc use.
+    """
+    if run_id is None:
+        return lambda i: uuid.uuid4().hex[:16]
+    return lambda i: hashlib.sha256(f"{run_id}|{i}".encode()).hexdigest()[:16]
 
 
 def run_agent(
@@ -272,6 +288,7 @@ def run_agent(
     task: Task,
     policy: Policy | None = None,
     injector: Injector | None = None,
+    run_id: str | None = None,
 ) -> Trace:
     """
     Execute one task and return its trace.
@@ -282,7 +299,10 @@ def run_agent(
     the world and policy are sane, ends at the gold answer.
     """
     policy = policy or ScriptedPolicy()
-    trace_id = uuid.uuid4().hex
+    new_id = _id_factory(run_id)
+    _n = iter(range(10_000))
+    _sid = lambda: new_id(next(_n))
+    trace_id = new_id(-1) if run_id is not None else uuid.uuid4().hex
     root = SpanRec(
         span_id=_sid(), parent_id=None, name="agent.run", span_kind="AGENT", index=0,
         input={"question": task.question, "task_id": task.task_id},

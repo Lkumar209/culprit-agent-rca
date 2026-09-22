@@ -64,9 +64,20 @@ def run_methods(
             signal=signal,
             gold=case.trace.task.gold,
         )
+        pos = {
+            s.span_id: i
+            for i, s in enumerate(
+                s for s in case.trace.candidates if s.name != "agent.answer"
+            )
+        }
         for m in methods:
             v = m.localize(case.trace, ctx)
             hit, rr = score(v, case.trace.culprit_span_id)
+            offset = (
+                pos[v.span_id] - pos[case.trace.culprit_span_id]
+                if v.span_id in pos and case.trace.culprit_span_id in pos
+                else None
+            )
             rows.append(
                 Row(
                     case_id=case.case_id, method=m.name, fault=case.fault,
@@ -75,7 +86,7 @@ def run_methods(
                     culprit=case.trace.culprit_span_id, predicted=v.span_id,
                     hit=hit, rr=rr, replays=v.cost.replays, llm_calls=v.cost.llm_calls,
                     usd=v.cost.usd, seconds=v.cost.seconds,
-                    abstained=v.score == 0.0,
+                    abstained=v.score == 0.0, offset=offset,
                 )
             )
     return rows
@@ -120,3 +131,39 @@ def by_visibility(rows: list[Row]) -> str:
 def by_fault(rows: list[Row]) -> str:
     agg = aggregate(rows, by=("method", "fault"))
     return table(agg, ["method", "fault", "n", "top1", "mrr"], title="Accuracy by fault type")
+
+
+def blame_direction(rows: list[Row]) -> str:
+    """
+    When a method is wrong, *which way* is it wrong?
+
+    This is the diagnostic that distinguishes two very different failure modes.
+    A method that blames spans downstream of the true cause is being fooled by
+    propagation -- it has found where the damage became visible rather than
+    where it started. A method that scatters in both directions is simply
+    guessing. The distinction matters because the first is fixable by giving
+    the method a causal signal, and the second is not.
+    """
+    from collections import defaultdict
+    from statistics import mean
+
+    groups: dict[str, list[Row]] = defaultdict(list)
+    for r in rows:
+        if r.offset is not None and not r.hit:
+            groups[r.method].append(r)
+
+    recs = []
+    for method, rs in sorted(groups.items()):
+        downstream = sum(r.offset > 0 for r in rs)
+        upstream = sum(r.offset < 0 for r in rs)
+        recs.append({
+            "method": method,
+            "n_wrong": len(rs),
+            "blamed_downstream": downstream / len(rs) if rs else 0.0,
+            "blamed_upstream": upstream / len(rs) if rs else 0.0,
+            "mean_offset": mean(r.offset for r in rs) if rs else 0.0,
+        })
+    return table(
+        recs, ["method", "n_wrong", "blamed_downstream", "blamed_upstream", "mean_offset"],
+        title="Direction of error on misses (positive offset = blamed the symptom, not the cause)",
+    )

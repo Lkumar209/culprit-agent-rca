@@ -1,0 +1,38 @@
+[project]
+name = "culprit"
+version = "0.1.0"
+description = "Root-cause localization for failed agent traces in Arize Phoenix"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Laxya Kumar" }]
+keywords = ["llm", "agents", "observability", "phoenix", "opentelemetry", "root-cause"]
+
+dependencies = [
+    "arize-phoenix-client>=1.0",
+    "openinference-instrumentation>=0.1",
+    "opentelemetry-sdk>=1.20",
+    "opentelemetry-exporter-otlp-proto-http>=1.20",
+    "pandas>=2.0",
+]
+
+[project.optional-dependencies]
+# The judge baselines. Not needed to run the product or the zero-cost arm.
+judges = ["anthropic>=0.40"]
+# A local Phoenix to point it at.
+server = ["arize-phoenix>=20.0"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+culprit = "culprit.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/culprit"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

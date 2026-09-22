@@ -157,6 +157,13 @@ siblings returned rows. It knows nothing about the domain.
 
 It reaches **0.139** on silent faults.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/figures/accuracy-by-visibility-dark.svg">
+    <img alt="Accuracy by fault visibility" src="docs/figures/accuracy-by-visibility-light.svg" width="100%">
+  </picture>
+</p>
+
 **The symptom span and the cause span are different spans.** A corrupted value
 looks completely normal where it enters; the damage only surfaces later, in the
 final answer.
@@ -198,6 +205,13 @@ while lo <= hi:
 ```
 
 **1.000 top-1 at 3.74 replays per trace.** Identical on silent and overt faults.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/figures/cost-frontier-dark.svg">
+    <img alt="Accuracy versus replay cost" src="docs/figures/cost-frontier-light.svg" width="100%">
+  </picture>
+</p>
 
 > **The real cost is not the replays.** It is that you must be able to *re-run
 > your tools*. Read-only lookups, retrieval and search qualify. A tool that
@@ -326,6 +340,13 @@ finds it. An observation fault returns data that's **externally wrong but
 internally consistent** — `8,857` cents, with nothing in the trace saying what it
 should have been.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/figures/contradiction-dark.svg">
+    <img alt="The contradiction test" src="docs/figures/contradiction-light.svg" width="100%">
+  </picture>
+</p>
+
 That pattern was found by looking at the data, so I turned it into a prediction
 *before* building the test: an observation-phase fault engineered to contradict
 its own request should score like a decision fault.
@@ -363,6 +384,13 @@ Same model, same prompt:
 | `unit_shift` | 0.042 | **0.271** |
 | `truncated_page` | 0.362 | **0.550** |
 | `stale_amounts` | 0.000 | 0.036 |
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/figures/instrumentation-dark.svg">
+    <img alt="Before and after instrumentation" src="docs/figures/instrumentation-light.svg" width="100%">
+  </picture>
+</p>
 
 **A 39% relative improvement from a response field.**
 

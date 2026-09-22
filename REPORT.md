@@ -119,6 +119,14 @@ Two search strategies sit on that primitive:
 
 ### 4.1 Inspection cannot see silent faults
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/figures/accuracy-by-visibility-dark.svg">
+    <img alt="Accuracy by fault visibility" src="docs/figures/accuracy-by-visibility-light.svg" width="100%">
+  </picture>
+</p>
+
+
 | method | top-1 | silent (n=424) | overt (n=123) |
 |---|---|---|---|
 | `last_span` | 0.000 | 0.000 | 0.000 |
@@ -182,6 +190,14 @@ judge.)
 
 ### 4.3 Repair reliability, not search, is the binding constraint
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/figures/repair-sweep-dark.svg">
+    <img alt="Accuracy as repair reliability falls" src="docs/figures/repair-sweep-light.svg" width="100%">
+  </picture>
+</p>
+
+
 The 1.000 figures assume a perfect repair oracle. In production the repaired
 value comes from a model asked "what should this step have returned?", and that
 proposal is sometimes wrong. Sweeping that probability:
@@ -201,6 +217,14 @@ restores 0.667 → 0.976 at p=0.7 for ~2.1× the replays. **Tune the repair, not
 the search.**
 
 ### 4.4 Bisection is what to ship
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/figures/cost-frontier-dark.svg">
+    <img alt="Accuracy versus cost" src="docs/figures/cost-frontier-light.svg" width="100%">
+  </picture>
+</p>
+
 
 `cf_exhaustive` pays for the culprit's depth; `cf_bisect` does not. Because
 faults here are injected at steps 0-3, culprits sit near the front and the
@@ -273,6 +297,14 @@ the question stays open, not that the parity reverses.
 
 ### 4.7 Why inspection plateaus: contradiction, not visibility
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/figures/contradiction-dark.svg">
+    <img alt="The contradiction test" src="docs/figures/contradiction-light.svg" width="100%">
+  </picture>
+</p>
+
+
 The 0.54 ceiling had no mechanism attached to it, and the obvious candidates
 were wrong. It is not fault visibility: the judge scores 0.545 on silent faults
 and 0.537 on overt, no gap. It is not trace length, which is non-monotonic once
@@ -327,6 +359,14 @@ result that carries the weight is the *contrast* with `stale_amounts` at 0.000,
 which holds phase and visibility fixed.
 
 ### 4.8 The diagnosis implies a treatment: instrumenting the tool
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/figures/instrumentation-dark.svg">
+    <img alt="Before and after instrumentation" src="docs/figures/instrumentation-light.svg" width="100%">
+  </picture>
+</p>
+
 
 If inspection is bounded by evidence rather than by the reader, then adding
 evidence to the trace should raise the ceiling without touching the judge, the

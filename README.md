@@ -69,6 +69,13 @@ culprit-healthy-traces (40 examples)
   first_error           0.000
 ```
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/figures/accuracy-by-visibility-dark.svg">
+    <img alt="Top-1 localization accuracy by fault visibility: heuristics score zero on silent faults, counterfactual replay scores 1.000" src="docs/figures/accuracy-by-visibility-light.svg" width="100%">
+  </picture>
+</p>
+
 ## What this establishes
 
 On 547 failed agent runs with known ground truth, **counterfactual intervention
@@ -77,6 +84,13 @@ inspection-based method tops out near 0.54** — including a whole-trace LLM jud
 that is six times better than chance. The gap holds on both fault classes, on
 two independent agent implementations, and comes with an ability inspection does
 not have: staying quiet on runs that did not fail.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/figures/contradiction-dark.svg">
+    <img alt="Two observation-phase faults differing only in whether the trace contains a contradiction: 1.000 versus 0.000" src="docs/figures/contradiction-light.svg" width="100%">
+  </picture>
+</p>
 
 **Why inspection plateaus there is a tested mechanism.** It is bounded by
 whether the trace contains a **contradiction** — not by fault visibility (there
@@ -175,6 +189,13 @@ judge.)
 the same 63 traces). Judging a span in isolation removes exactly the context
 needed to notice that a plausible value is wrong.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/figures/cost-frontier-dark.svg">
+    <img alt="Accuracy versus replay cost for every method" src="docs/figures/cost-frontier-light.svg" width="100%">
+  </picture>
+</p>
+
 ### Cost, and why bisection wins
 
 `cf_exhaustive` stops at the earliest causal span, so it pays for the culprit's
@@ -202,6 +223,14 @@ judge as scorer too. A scorer only pays if it is cheaper than the search it
 replaces, and bisection is already very cheap.
 
 ### Repair reliability is the binding constraint
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/figures/repair-sweep-dark.svg">
+    <img alt="Top-1 accuracy as repair-oracle reliability falls" src="docs/figures/repair-sweep-light.svg" width="100%">
+  </picture>
+</p>
+
 
 The 1.000 figures assume a perfect repair oracle. Sweeping that downward
 (`experiments/exp02_repair_sweep.py`) is the honest picture:
@@ -251,6 +280,14 @@ one swallows, meaning the main arm if anything *overstates* how damaging silent
 faults are.
 
 ### You can buy a better judge with instrumentation, not a bigger model
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/figures/instrumentation-dark.svg">
+    <img alt="LLM judge accuracy before and after instrumenting the tool with a redundant summary" src="docs/figures/instrumentation-light.svg" width="100%">
+  </picture>
+</p>
+
 
 If inspection is bounded by evidence rather than by the reader, adding evidence
 should raise the ceiling with the model untouched. `list_invoices` was
@@ -356,6 +393,21 @@ python experiments/exp04_judge_arm.py --dry-run   # costs the judge sweep first
 
 ## How it works
 
+```mermaid
+flowchart LR
+    A["agent run<br/><i>tool-using, multi-step</i>"] -->|OpenInference<br/>over OTLP| P[("Phoenix<br/>self-hosted")]
+    P -->|phoenix.client| L{{"culprit"}}
+    L -->|repair a span,<br/>replay forward| R["counterfactual<br/>outcome"]
+    R -->|earliest span that<br/>moves the outcome| V["verdict"]
+    V -->|span annotation<br/><code>annotator_kind=CODE</code>| P
+    P -.->|dataset of<br/>failed traces| E["Phoenix<br/>experiments"]
+    L -.->|one task<br/>per method| E
+    E -.->|evaluators| M["correct_span · reciprocal_rank<br/>blame_distance · replay_cost"]
+```
+
+<details>
+<summary>ASCII version</summary>
+
 ```
 agent run ──► OpenInference spans ──► Phoenix (self-hosted)
                                           │
@@ -369,6 +421,8 @@ agent run ──► OpenInference spans ──► Phoenix (self-hosted)
                                        ▼
                         phoenix_io.write_verdict  ──► span annotation
 ```
+
+</details>
 
 The intervention primitive is in `replay.py`. For a span `k`: repair its output,
 replay the run forward, compare the final answer. Two search strategies sit on
@@ -530,6 +584,8 @@ and was verified by reintroducing the bug.
 | `REPORT.md` | the applied-research write-up |
 | `EXPERIMENT_LOG.md` | audit trail: every run, including the ones that found bugs |
 | `src/culprit/phoenix_experiments.py` | datasets, experiment tasks and evaluators |
+| `scripts/make_figures.py` | regenerates every figure from the saved results |
+| `docs/figures/` | the figures, light and dark |
 | `docs/phoenix-ui.md` | how to capture the UI screenshot |
 
 `experiments/prewarm_judges.py` populates the judge response cache in parallel;
@@ -543,6 +599,18 @@ evaluation corpus. It was engineered to be maximally detectable by an
 inspecting judge in order to test one hypothesis, so sweeping it into the main
 results would inflate the judge's score with a fault chosen for that property.
 Request it by name (`build_corpus(faults=("contradictory_echo",))`).
+
+## Reproducing the figures
+
+Every figure reads its numbers from `experiments/results/*.json` rather than
+having them typed in, so a chart cannot drift from the experiment behind it:
+
+```bash
+python scripts/make_figures.py
+```
+
+Each is written twice, light and dark, and embedded with `<picture>` so GitHub
+serves the right one for your theme.
 
 ## License
 

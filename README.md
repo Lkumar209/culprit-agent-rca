@@ -15,12 +15,25 @@ implicated; a span that does not is a bystander, however suspicious it looks.
 
 ---
 
+## What this establishes
+
+On 547 failed agent runs with known ground truth, **counterfactual intervention
+identifies the causal span in 1.000 of cases at 3.74 replays, while every
+inspection-based method tops out near 0.54** — including a whole-trace LLM judge
+that is six times better than chance. The gap holds on both fault classes, on
+two independent agent implementations, and comes with an ability inspection does
+not have: staying quiet on runs that did not fail.
+
+What it does *not* establish is why inspection plateaus there. The judge is not
+short of information — it finds silent faults as readily as overt ones — and its
+errors are broad and unsystematic rather than a clean cause-versus-symptom
+confusion. That mechanism is open.
+
 ## Why this is not a solved problem
 
 The obvious approach is to scroll the trace and blame the span with the error on
-it. On a benchmark of 546 failed agent runs with known ground truth, that
-heuristic gets **78.9% of overt failures and exactly 0.0% of silent ones** — and
-silent failures are 77% of the corpus (`n=547`).
+it. That heuristic gets **78.9% of overt failures and exactly 0.0% of silent
+ones** — and silent failures are 77% of the corpus (`n=547`).
 
 The reason is that in a multi-step agent the symptom and the cause are usually
 different spans. A tool that returns a truncated page of results, a stale
@@ -52,11 +65,15 @@ the correct answer is known by construction.
 
 Four things in that table are worth more than the headline:
 
-**1. The find-the-red-span heuristic scores exactly zero on silent faults**, which
-are 424 of the 547 failures. That is not a rigged baseline: `output_anomaly` is
-a domain-agnostic statistical detector that compares each tool call against the
-other calls of that tool in the same trace, and it reaches only 0.139. The
-information is not in the span.
+**1. Span-local inspection fails on silent faults; trace-level inspection does
+not.** `first_error` scores exactly zero on the 424 silent failures, and that is
+not a rigged baseline — `output_anomaly`, a domain-agnostic statistical detector
+comparing each tool call against the other calls of that tool, reaches only
+0.139. But the whole-trace judge shows **no silent/overt gap at all** (0.545 vs
+0.537). So what span-local methods lack is not visibility of the fault; it is
+context. A silent fault is invisible *in its own span* and recoverable *from the
+whole trace*. The per-span judge sitting between them (0.413, and 0.388 on
+silent) is the dose-response.
 
 **2. The LLM judge is not blind to silent faults — this refuted the project's
 starting hypothesis.** I predicted judges would track `first_error`: fine on
@@ -65,18 +82,26 @@ overt faults, useless on silent ones. Instead the whole-trace judge scores
 markers; it reconstructs the run's arithmetic from the trace. A judge is a
 genuinely good cheap localizer — roughly 3× the best heuristic for one API call.
 
-**3. Judges fail differently from heuristics**, which is why the direction of
-error is measured and not just the rate:
+**3. Judges and heuristics fail differently**, which is why the error's
+direction and distance are measured and not just its rate:
 
-| method | blames downstream | blames upstream | mean offset |
+| method | blames downstream | blames upstream | typical miss distance |
 |---|---|---|---|
-| `first_error` | 100% | 0% | +7.72 |
-| `llm_trace_judge` | 57.6% | 42.4% | **+1.06** |
+| `first_error` | 100% | 0% | 7.72 spans |
+| `llm_trace_judge` | 57.6% | 42.4% | 3.26 spans |
 
-`first_error` fails by blaming the end of the trace. The judge, when wrong, is
-off by about one span in either direction — nearly right, hence its 0.636 MRR.
-That difference matters: a method that is nearly right can be cheaply corrected,
-and one that points at the final answer cannot.
+The distinction is in the *shape* of the error, not its size. `first_error`
+fails **systematically**: it always blames downstream, because with no error
+span to find it falls back to the end of the trace. The judge fails
+**unsystematically** — scattered in both directions, typically three spans off
+in a trace averaging 11.7 candidates. Neither is close. A judge that is wrong
+is not nearly right; it is wrong in a way you cannot correct by looking harder,
+which is what a systematic bias would let you do.
+
+(Reported as mean *absolute* distance. The signed mean is +1.06, which looks
+like "off by one" and is an artifact of opposite errors cancelling — worth
+stating because it is exactly the statistic that would have flattered the
+judge.)
 
 **4. Per-span judging is *worse* than whole-trace judging** (0.413 vs 0.476 on
 the same 63 traces). Judging a span in isolation removes exactly the context

@@ -3,6 +3,22 @@
 **An applied research report on `culprit`, a root-cause localization tool for
 Arize Phoenix.**
 
+> **Main finding.** On 547 failed agent runs with known ground truth,
+> counterfactual intervention -- repairing a span and replaying the run --
+> identifies the causal span in **1.000** of cases at **3.74 replays**, while
+> every inspection-based method tops out near **0.54**, including a whole-trace
+> LLM judge that is six times better than chance and shows no weakness on
+> silent faults. The advantage holds across both fault classes, across two
+> independent agent implementations (rule-based and a live LLM agent), and
+> comes with an ability no inspection method has: declining to name anyone on
+> runs that did not fail (97.8-100% vs 0%).
+>
+> **What this does not establish:** *why* inspection plateaus at 0.54. The
+> judge is not failing for lack of information -- it finds silent faults as
+> readily as overt ones. Its residual errors are broad (typically 3.26 spans)
+> and unsystematic, which rules out a simple cause-versus-symptom confusion but
+> does not replace it with a mechanism. That remains open.
+
 ---
 
 ## 1. The question
@@ -110,8 +126,11 @@ finds nothing when there is no error. So I added `output_anomaly`, a
 domain-agnostic statistical detector that compares each tool call against the
 other calls of the same tool in the same trace, flagging numeric outliers and
 empty collections where siblings returned rows. It knows nothing about the
-domain or the fault taxonomy. It reaches 0.139 on silent faults. The
-information is not in the span.
+domain or the fault taxonomy. It reaches 0.139 on silent faults.
+
+What this establishes is narrower than "the information is missing", and the
+next section is why: a silent fault is invisible **in its own span**, not in the
+trace.
 
 ### 4.2 The LLM judge refuted my hypothesis
 
@@ -134,14 +153,23 @@ argument even as it undercuts the blindness one: judging a span in isolation
 removes exactly the context needed to notice a plausible value is wrong. And the
 **direction of error** separates the two failure modes cleanly:
 
-| method | blames downstream | blames upstream | mean offset |
+| method | blames downstream | blames upstream | typical miss distance |
 |---|---|---|---|
-| `first_error` | 100% | 0% | +7.72 |
-| `llm_trace_judge` | 57.6% | 42.4% | **+1.06** |
+| `first_error` | 100% | 0% | 7.72 spans |
+| `llm_trace_judge` | 57.6% | 42.4% | 3.26 spans |
 
-`first_error` fails by blaming the end of the trace. The judge, when wrong, is
-off by about one span in either direction — nearly right. That is a materially
-different kind of wrong, and it is invisible in a top-1 number.
+The distinction is in the *shape* of the error, not its size. `first_error`
+fails **systematically**: it always blames downstream, because with no error
+span to find it falls back to the end of the trace. The judge fails
+**unsystematically** — scattered in both directions, typically three spans off
+in a trace averaging 11.7 candidates. Neither is close. A judge that is wrong
+is not nearly right; it is wrong in a way you cannot correct by looking harder,
+which is what a systematic bias would let you do.
+
+(Reported as mean *absolute* distance. The signed mean is +1.06, which looks
+like "off by one" and is an artifact of opposite errors cancelling — worth
+stating because it is exactly the statistic that would have flattered the
+judge.)
 
 ### 4.3 Repair reliability, not search, is the binding constraint
 
@@ -299,14 +327,36 @@ For a Phoenix user with re-executable tools, the recommendation is specific:
 verdicts back as span annotations. It is ~3.7 replays per trace, depth
 independent, and it abstains on healthy runs.
 
-The judge result reframes the pitch honestly. A one-call LLM judge gets 0.543
-and is nearly right when wrong — for many teams that is enough, and it needs no
-replay environment at all. The case for intervention is not that judges are
-blind. It is that they plateau around half, cannot abstain, and cannot tell you
-*why*; intervention reaches 1.000 and produces evidence. The right product is
-probably both: the judge for triage, replay for confirmation.
+The judge result reframes the pitch, and the honest framing is narrower than
+the one I started with. It is **not** that judges are blind -- a one-call judge
+reaches 0.543, six times chance, with no silent/overt weakness, and needs no
+replay environment. For triage that may well be enough.
+
+The case for intervention rests on three measured things, none of which is a
+claim about judge quality:
+
+1. **It resolves the last 46 points.** 1.000 against 0.543, on both fault
+   classes and on both agent implementations.
+2. **Its errors are correctable and inspection's are not.** A judge that misses
+   is typically three spans away in both directions, so there is no bias to
+   exploit and no cheap post-hoc fix. A replay either moves the outcome or it
+   does not.
+3. **It can abstain.** Inspection has no way to express "nothing here", because
+   there is always a most-suspicious span. On runs that did not fail,
+   intervention declines 97.8-100% of the time; every heuristic names a suspect
+   every time. For a debugging tool pointed at whatever a user flags, that is
+   the difference between an assistant and a generator of suspects.
+
+The cost of intervention is not the replay count -- 3.74 is cheap. It is the
+requirement for a re-executable environment, which is a real constraint that
+rules out side-effecting tools entirely.
+
+**The layered product is probably right:** judge for triage, replay for
+confirmation. The judge is cheap enough to run on everything and good enough to
+rank; replay is precise enough to be believed and honest enough to stay quiet.
 
 The most valuable next experiment is a larger LLM-agent arm across several
 models. The 44-trace replication shows the method transfers; what it cannot
-show is whether a more capable agent -- one that recovers from faults more
-often -- changes which faults matter in practice.
+show is whether a more capable agent -- one that already recovers from 55.6% of
+faults -- changes which faults matter in practice. The second is a mechanism
+for the 0.54 plateau, which this work measures but does not explain.

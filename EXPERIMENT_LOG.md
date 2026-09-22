@@ -287,3 +287,41 @@ what design change came out of it.
   the judge scored 0.424 silent vs 0.727 overt, where the scripted arm had no
   gap at all. With n=11 overt the intervals are [0.27,0.59] and [0.43,0.90] and
   overlap heavily. Recorded as underpowered and open, not as a reversal.
+
+## 2026-09-22 — Auditing the headline against the evidence
+
+- **Purpose:** Before publishing, check that the framing I had been using --
+  "localization is bounded by information, not method quality" -- is actually
+  what the data shows.
+- **Cost:** $0.
+- **Result: the framing was wrong, and one reported statistic was misleading.**
+  1. *The information claim is contradicted by my own result.* If silent faults
+     were unfindable for lack of information, the whole-trace judge should do
+     worse on them. It does not -- 0.545 silent vs 0.537 overt, no gap. What
+     span-local methods lack is **context**, not fault visibility: a silent
+     fault is invisible in its own span and recoverable from the whole trace.
+     The per-span judge (0.413, 0.388 on silent) sitting between `first_error`
+     (0.000) and the trace judge (0.545) is the dose-response.
+  2. *"The judge is nearly right when wrong" was an artifact.* I had reported a
+     mean signed offset of +1.06 and read it as "off by about one span". Mean
+     **absolute** offset on misses is **3.26** (median 3.0), in traces
+     averaging 11.7 candidate spans. The signed mean was small only because
+     errors in opposite directions cancelled -- 57.6% downstream, 42.4%
+     upstream. The judge is not nearly right; it is broadly and
+     unsystematically wrong.
+  3. *Within-k windows are cheap.* `within +/-3 = 0.872` looks strong until the
+     control: random reaches 0.692 at the same window, because +/-3 covers most
+     of a short trace. Only the exact-match number (judge 0.543 vs random
+     0.089) carries weight.
+- **Design change:** Headline rewritten in `README.md` and `REPORT.md` to state
+  the measured frontier (1.000 at 3.74 replays vs an inspection plateau near
+  0.54, across both fault classes and both agent implementations, plus
+  abstention) and to state explicitly that the *mechanism* for the 0.54 plateau
+  is **not** established. Direction-of-error tables now report mean absolute
+  distance, with the signed mean shown as the statistic that would have
+  flattered the judge.
+- **Note:** This is the seventh time an analysis changed a claim rather than
+  confirming it, and the only one where the flaw was in my interpretation
+  rather than in the harness. The correction makes the headline narrower and
+  the report more defensible: the strong result was never the mechanism, it was
+  the frontier.

@@ -323,8 +323,9 @@ which holds phase and visibility fixed.
 
 ## 5. The process, honestly
 
-Four times an experiment exposed a flaw in the harness rather than a property of
-a method. Each is in `EXPERIMENT_LOG.md` with the run that caught it.
+Seven times an analysis changed a claim rather than confirming it -- five flaws
+in the harness, one in a reported statistic, and one contamination caught in a
+final audit. Each is in `EXPERIMENT_LOG.md` with the run that caught it.
 
 **Degenerate failures.** The first fault sweep produced 161 failures per fault at
 a median of 49 spans, with no answer — the agent retried forever until the step

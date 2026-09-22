@@ -371,3 +371,33 @@ what design change came out of it.
   maximally contradictory, so 1.000 is an upper bound rather than a typical
   value. The weight is carried by the contrast with `stale_amounts`, which
   holds phase and visibility fixed.
+
+## 2026-09-22 — Final audit: the probe fault had contaminated the corpus
+
+- **Purpose:** Sweep the repo for contradictions between what the documents
+  claim and what the code does, before treating any of it as finished.
+- **Cost:** $0.
+- **Found, and it mattered:** `contradictory_echo` was added to
+  `FAULT_CATALOG`, and `build_corpus` defaulted to *every* fault in the
+  catalog. The held-out probe had silently joined the evaluation corpus:
+  re-running `exp01` produced **616 failed traces (493 silent)** against the
+  **547 (424 silent)** reported everywhere in the documents. Two separate
+  problems in one bug:
+  1. **Reproducibility.** Anyone running `python experiments/exp01_free_arm.py`
+     would not get the numbers in the report.
+  2. **Contamination, in the direction that flatters my own argument's
+     opponent — and therefore looks like cherry-picking either way.**
+     `contradictory_echo` was *designed* to be maximally detectable by an
+     inspecting judge. Sweeping it into the main corpus would have moved the
+     judge's headline score using a fault selected for that property.
+- **Design change:** Added `PROBE_FAULTS` / `MAIN_FAULTS`; `build_corpus`
+  defaults to `MAIN_FAULTS` and a probe must be requested by name. Verified
+  `exp01` now reproduces the saved corpus exactly (547/424/123) and the saved
+  per-method numbers to three decimals.
+- **Also corrected in the same pass:** the README layout table omitted
+  `llm.py`, `llm_policy.py` and `cli.py`, said "the four experiments" when
+  there are five, and described the taxonomy without noting the held-out probe.
+- **Note:** This is the seventh time. It is also the first one found by auditing
+  rather than by an experiment surfacing it, which is the argument for doing the
+  audit at all: the bug was introduced by the very experiment that produced the
+  project's strongest result, and nothing about that result looked wrong.

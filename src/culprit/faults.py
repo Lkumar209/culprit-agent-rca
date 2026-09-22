@@ -52,6 +52,15 @@ FAULT_CATALOG: dict[str, tuple[str, str]] = {
     "dropped_constraint": ("decision", "silent"),
 }
 
+# Diagnostic probes. These exist to test a specific hypothesis and are
+# deliberately NOT part of the evaluation corpus: `contradictory_echo` was
+# engineered to be maximally detectable by an inspecting judge, so including it
+# in the main sweep would inflate the judge's score with a fault chosen for that
+# property. `build_corpus` defaults to MAIN_FAULTS; a probe has to be requested
+# by name.
+PROBE_FAULTS = ("contradictory_echo",)
+MAIN_FAULTS = tuple(f for f in FAULT_CATALOG if f not in PROBE_FAULTS)
+
 SILENT = tuple(n for n, (_, v) in FAULT_CATALOG.items() if v == "silent")
 OVERT = tuple(n for n, (_, v) in FAULT_CATALOG.items() if v == "overt")
 

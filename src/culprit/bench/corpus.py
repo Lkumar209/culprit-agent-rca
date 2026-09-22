@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from typing import Any, Iterator
 
 from ..agent import Trace, run_agent
-from ..faults import FAULT_CATALOG, Injector, make_injector
+from ..faults import FAULT_CATALOG, MAIN_FAULTS, Injector, make_injector
 from ..tools import Task, build_tasks
 from ..world import World, build_world
 
@@ -80,7 +80,7 @@ def build_corpus(
     world = build_world(seed=world_seed)
     tasks = build_tasks(world, seed=task_seed, n_per_kind=n_per_kind)
     _TASK_CACHE[id(world)] = {t.task_id: t for t in tasks}
-    faults = faults or tuple(FAULT_CATALOG)
+    faults = faults or MAIN_FAULTS
     # Interleave the task kinds. With `max_failed` set the sweep stops
     # early, and in task order that meant the whole corpus came from the
     # first kind alone -- 40 failures all of one shape, with a recovery rate

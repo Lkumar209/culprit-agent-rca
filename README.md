@@ -336,14 +336,29 @@ of Phoenix agrees with localizing them in-process on **100% of cases**.
 | `src/culprit/world.py` | synthetic business domain, deterministic from a seed |
 | `src/culprit/tools.py` | the agent's toolset and the multi-hop task generator |
 | `src/culprit/agent.py` | the instrumented agent and its policy |
-| `src/culprit/faults.py` | 9-fault injection taxonomy, silent vs overt |
+| `src/culprit/faults.py` | 9-fault injection taxonomy (+1 held-out probe) |
 | `src/culprit/replay.py` | the counterfactual intervention primitive |
 | `src/culprit/environment.py` | the re-execution protocol |
 | `src/culprit/localizers/` | heuristics, LLM judges, counterfactual methods |
+| `src/culprit/llm.py` | Anthropic client: disk cache, hard budget cap |
+| `src/culprit/llm_policy.py` | the LLM agent arm — same scaffolding, model decisions |
 | `src/culprit/tracing.py` | OpenInference export to Phoenix |
 | `src/culprit/phoenix_io.py` | read spans back, write verdicts as annotations |
 | `src/culprit/bench/` | corpus construction, metrics, experiment runner |
-| `experiments/` | the four experiments and their saved results |
+| `src/culprit/cli.py` | `culprit doctor` / `demo` / `analyze` |
+| `experiments/` | the five experiments and their saved results |
+
+`experiments/prewarm_judges.py` populates the judge response cache in parallel;
+run it before `exp04` to turn ~2 hours of sequential API calls into ~10 minutes.
+The experiment itself then runs from cache.
+
+### Held-out probe
+
+`contradictory_echo` is excluded from `MAIN_FAULTS` and never enters the
+evaluation corpus. It was engineered to be maximally detectable by an
+inspecting judge in order to test one hypothesis, so sweeping it into the main
+results would inflate the judge's score with a fault chosen for that property.
+Request it by name (`build_corpus(faults=("contradictory_echo",))`).
 
 ## License
 

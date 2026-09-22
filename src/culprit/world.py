@@ -81,6 +81,13 @@ class World:
     orders: dict[str, Order] = field(default_factory=dict)
     invoices: dict[str, Invoice] = field(default_factory=dict)
     policy_caps_cents: dict[str, int] = field(default_factory=dict)
+    # When set, listing tools return a server-side count and total alongside
+    # the rows. This is the instrumentation change the contradiction result
+    # predicts should matter: corruption of the rows then disagrees with a
+    # summary the fault never touched, turning an unverifiable value into a
+    # visible inconsistency. Off by default -- it changes every trace, so it
+    # must never leak into the evaluation corpus.
+    redundant_summaries: bool = False
 
     # --- indexes -------------------------------------------------------
     def invoices_for(self, vendor_id: str, quarter: str | None = None) -> list[Invoice]:
@@ -113,10 +120,13 @@ class World:
         return None
 
 
-def build_world(seed: int = 7, n_vendors: int = 24, n_orders: int = 60) -> World:
+def build_world(
+    seed: int = 7, n_vendors: int = 24, n_orders: int = 60,
+    redundant_summaries: bool = False,
+) -> World:
     """Construct the deterministic world. Same seed always yields the same org."""
     rng = random.Random(seed)
-    w = World()
+    w = World(redundant_summaries=redundant_summaries)
 
     names: list[str] = []
     for stem in _STEMS:

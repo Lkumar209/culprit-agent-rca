@@ -196,6 +196,34 @@ policy's 45.6% -- a real model routes around corruption a credulous rule-based
 one swallows, meaning the main arm if anything *overstates* how damaging silent
 faults are.
 
+### You can buy a better judge with instrumentation, not a bigger model
+
+If inspection is bounded by evidence rather than by the reader, adding evidence
+should raise the ceiling with the model untouched. `list_invoices` was
+instrumented to return a server-side `n_matching` and `total_matching_cents`
+beside the rows — a fault that rewrites the rows leaves them untouched, so the
+response contradicts itself. Same model, same prompt, same everything else:
+
+| fault | baseline | instrumented |
+|---|---|---|
+| **all four** | 0.344 | **0.478** |
+| `unit_shift` | 0.042 | **0.271** |
+| `truncated_page` | 0.362 | **0.550** |
+| `empty_result` | 0.593 | 0.659 |
+| `stale_amounts` | 0.000 | 0.036 |
+| *replay (control)* | *1.000* | *1.000* |
+
+**A 39% relative improvement from a response field.** `stale_amounts` refines
+the claim: the evidence was added and the judge still could not use it, because
+checking that contradiction means summing rows across pages and comparing to a
+total at 5–25% drift. **A contradiction has to be cheap to check, not merely
+present** — emit summaries that expose corruption by counting or magnitude, not
+ones needing exact cross-span arithmetic.
+
+This is the most actionable result here: a team whose tools are not safely
+re-executable, and so cannot adopt replay, can still buy most of a judge upgrade
+for the price of a response field.
+
 ### It knows when to say nothing
 
 Pointed at runs that did not fail (`experiments/exp03_abstention.py`),
@@ -234,8 +262,32 @@ localizing with cf_exhaustive_x3 (signal=changed) ...
 
 `demo` manufactures agent runs with known faults, ships them to Phoenix as
 OpenInference spans, reads them back through the ordinary Phoenix client,
-localizes each failure, and annotates the guilty span. Then open
-`http://localhost:6006` and filter by the `culprit` annotation.
+localizes each failure, and annotates the guilty span.
+
+### What lands in Phoenix
+
+Open `http://localhost:6006`, pick the project, and select a failed trace. The
+guilty span carries a `culprit` annotation in the span detail pane — the
+verdict sits on the span it accuses, next to that span's own input and output.
+Read back through the client:
+
+```python
+>>> from phoenix.client import Client
+>>> c = Client(base_url="http://localhost:6006")
+>>> df = c.spans.get_spans_dataframe(project_identifier="culprit-demo")
+>>> ann = c.spans.get_span_annotations_dataframe(
+...     span_ids=[str(i) for i in df.index], project_identifier="culprit-demo")
+>>> ann.iloc[0]
+annotation_name                                               culprit
+annotator_kind                                                   CODE
+result.label                                                root_cause
+result.score                                                      1.0
+result.explanation    repairing this span changed the outcome; 22 spans probed
+```
+
+`annotator_kind="CODE"` matters: Phoenix distinguishes these from human and
+LLM annotations, so a replay verdict is filterable and never confused with a
+judgement.
 
 Reproduce the experiments:
 
@@ -373,7 +425,8 @@ is reintroduced.
 | `src/culprit/phoenix_io.py` | read spans back, write verdicts as annotations |
 | `src/culprit/bench/` | corpus construction, metrics, experiment runner |
 | `src/culprit/cli.py` | `culprit doctor` / `demo` / `analyze` |
-| `experiments/` | the five experiments and their saved results |
+| `experiments/` | the six experiments and their saved results |
+| `docs/phoenix-ui.md` | how to capture the UI screenshot |
 
 `experiments/prewarm_judges.py` populates the judge response cache in parallel;
 run it before `exp04` to turn ~2 hours of sequential API calls into ~10 minutes.

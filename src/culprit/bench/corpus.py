@@ -75,9 +75,10 @@ def build_corpus(
     faults: tuple[str, ...] | None = None,
     policy: Any = None,
     max_failed: int | None = None,
+    redundant_summaries: bool = False,
 ) -> tuple[World, list[Case]]:
     """Sweep tasks x faults x injection points and label every resulting trace."""
-    world = build_world(seed=world_seed)
+    world = build_world(seed=world_seed, redundant_summaries=redundant_summaries)
     tasks = build_tasks(world, seed=task_seed, n_per_kind=n_per_kind)
     _TASK_CACHE[id(world)] = {t.task_id: t for t in tasks}
     faults = faults or MAIN_FAULTS

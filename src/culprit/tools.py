@@ -76,7 +76,7 @@ def list_invoices(
     rows = world.invoices_for(str(vendor_id).strip(), quarter)
     start = (page - 1) * PAGE_SIZE
     chunk = rows[start : start + PAGE_SIZE]
-    return {
+    out: dict[str, Any] = {
         "vendor_id": vendor_id,
         "quarter": quarter,
         "page": page,
@@ -91,6 +91,13 @@ def list_invoices(
         ],
         "has_more": start + PAGE_SIZE < len(rows),
     }
+    if world.redundant_summaries:
+        # Computed from the true rows, independent of whatever the page ends up
+        # containing. A fault that rewrites the rows leaves this untouched, so
+        # the response contradicts itself.
+        out["n_matching"] = len(rows)
+        out["total_matching_cents"] = sum(i.amount_cents for i in rows)
+    return out
 
 
 def get_policy_cap(world: World, category: str) -> dict[str, Any]:

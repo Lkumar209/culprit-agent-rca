@@ -321,6 +321,47 @@ contradictory, so 1.000 is an upper bound rather than a typical value. The
 result that carries the weight is the *contrast* with `stale_amounts` at 0.000,
 which holds phase and visibility fixed.
 
+### 4.8 The diagnosis implies a treatment: instrumenting the tool
+
+If inspection is bounded by evidence rather than by the reader, then adding
+evidence to the trace should raise the ceiling without touching the judge, the
+prompt or the model. That is a testable consequence, not a corollary, so it was
+tested.
+
+`list_invoices` was instrumented to return a server-side `n_matching` and
+`total_matching_cents` beside the rows, computed from the true result set so a
+fault that rewrites the rows leaves them untouched. A silent corruption then
+disagrees with a summary inside its own response. Everything else was held
+fixed: same world seed, tasks, faults, injection points, judge and prompt.
+
+| fault | baseline | instrumented |
+|---|---|---|
+| **all four** | 0.344 [0.29, 0.41] | **0.478** [0.42, 0.54] |
+| `unit_shift` | 0.042 | **0.271** |
+| `truncated_page` | 0.362 | **0.550** |
+| `empty_result` | 0.593 | 0.659 |
+| `stale_amounts` | 0.000 | 0.036 |
+| *counterfactual replay (control)* | *1.000* | *1.000* |
+
+**A 39% relative improvement in a judge, bought by changing a tool's response
+shape rather than the model.** Replay is unchanged, as predicted -- it never
+needed the evidence because it generates its own.
+
+`stale_amounts` is the interesting failure, and it refines the mechanism.
+Instrumentation did put the evidence in the trace, and the judge still could not
+use it. The difference is what checking the contradiction costs. `empty_result`
+and `truncated_page` reduce to comparing a count against the rows in hand;
+`unit_shift` is an order-of-magnitude mismatch visible at a glance. Catching
+`stale_amounts` means summing rows across several pages and comparing against a
+total when the drift is only 5-25%. The evidence is present; the arithmetic is
+not free.
+
+So the sharper statement is that **a contradiction has to be cheap to check, not
+merely present.** That is a more useful claim than the one it replaces, because
+it says what kind of instrumentation pays: emit summaries that make corruption
+visible by counting or by magnitude, not ones that require exact arithmetic
+across spans to reconcile.
+
 ## 5. The process, honestly
 
 Seven times an analysis changed a claim rather than confirming it -- five flaws
@@ -414,6 +455,11 @@ rules out side-effecting tools entirely.
 **The layered product is probably right:** judge for triage, replay for
 confirmation. The judge is cheap enough to run on everything and good enough to
 rank; replay is precise enough to be believed and honest enough to stay quiet.
+
+The instrumentation result (§4.8) is the most directly actionable thing here: a
+team that cannot adopt replay, because its tools are not safely re-executable,
+can still buy a 39% relative improvement in a judge by having those tools return
+redundant summaries. That costs a response field, not a model upgrade.
 
 The most valuable next experiment is a larger LLM-agent arm across several
 models. The 44-trace replication shows the method transfers; what it cannot

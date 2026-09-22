@@ -325,3 +325,49 @@ what design change came out of it.
   rather than in the harness. The correction makes the headline narrower and
   the report more defensible: the strong result was never the mechanism, it was
   the frontier.
+
+## 2026-09-22 — The mechanism behind the 0.54 ceiling (registered prediction)
+
+- **Purpose:** The headline audit left "why does inspection plateau at 0.54?"
+  explicitly open. Two candidate explanations were already dead -- visibility
+  (no silent/overt gap) and trace length (non-monotonic once fault type is
+  controlled). Break the judge's accuracy down by fault and see what is left.
+- **Cost:** $0 for the analysis, $0.111 for the test that followed.
+- **Observation:** Accuracy splits almost perfectly along which side of the
+  agent/tool boundary the fault sits on -- decision faults **0.921**
+  [0.87,0.95], observation faults **0.360** [0.31,0.41], non-overlapping. The
+  per-fault ordering fits a mechanism: a decision fault makes two spans in the
+  trace disagree (the agent asked for `V1007` when an earlier span established
+  `V1003`), while an observation fault returns data that is externally wrong but
+  internally consistent (8,857 cents, with nothing in the trace saying what it
+  should have been). `stale_amounts` 0.000 and `unit_shift` 0.042 are exactly
+  the faults whose corrupted value is unverifiable from the trace.
+- **Why that was not yet a result:** the pattern was found by looking at the
+  data. Post-hoc.
+- **Registered prediction, stated before the fault existed:** if the mechanism
+  is *contradiction* rather than *phase*, then an observation-phase fault
+  engineered to contradict its own request should score ~0.9, not ~0.36.
+- **Test:** added `contradictory_echo`, a held-out fault that serves another
+  vendor's invoices *and* echoes that vendor's id, so the response visibly
+  disagrees with the request. The data is as wrong as `stale_amounts`; only the
+  evidence differs.
+- **Result — confirmed, with complete separation:**
+
+  | fault | phase | contradiction | judge | replay |
+  |---|---|---|---|---|
+  | `hallucinated_arg` | decision | yes | 0.982 | 1.000 |
+  | `contradictory_echo` | observation | yes | **1.000** [0.95,1.00] | 1.000 |
+  | `stale_amounts` | observation | no | **0.000** [0.00,0.12] | 1.000 |
+
+  Two observation-phase faults, both silent, identical except for the presence
+  of a contradiction: 1.000 vs 0.000, intervals nowhere near overlapping.
+- **Design change:** The open question in the headline is replaced by a tested
+  mechanism. **Inspection is bounded by whether the trace contains a
+  contradiction, not by the capability of the reader** -- no better judge will
+  find a wrong number that nothing contradicts, because the information is not
+  present. Intervention is not bounded this way: it generates the evidence by
+  re-running the agent.
+- **Caveat recorded in the report:** `contradictory_echo` was built to be
+  maximally contradictory, so 1.000 is an upper bound rather than a typical
+  value. The weight is carried by the contrast with `stale_amounts`, which
+  holds phase and visibility fixed.

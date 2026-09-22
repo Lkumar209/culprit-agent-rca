@@ -24,10 +24,24 @@ that is six times better than chance. The gap holds on both fault classes, on
 two independent agent implementations, and comes with an ability inspection does
 not have: staying quiet on runs that did not fail.
 
-What it does *not* establish is why inspection plateaus there. The judge is not
-short of information — it finds silent faults as readily as overt ones — and its
-errors are broad and unsystematic rather than a clean cause-versus-symptom
-confusion. That mechanism is open.
+**Why inspection plateaus there is a tested mechanism.** It is bounded by
+whether the trace contains a **contradiction** — not by fault visibility (there
+is no silent/overt gap) and not by which side of the agent/tool boundary the
+fault sits on. Two observation-phase faults, both silent, identical except that
+one's response contradicts its own request, score **1.000 and 0.000**. Replay is
+1.000 on both. The prediction was registered before the fault testing it was
+written.
+
+| fault | phase | contradiction? | judge | replay |
+|---|---|---|---|---|
+| `hallucinated_arg` | decision | yes | 0.982 | 1.000 |
+| `contradictory_echo` | observation | yes | **1.000** | 1.000 |
+| `stale_amounts` | observation | no | **0.000** | 1.000 |
+
+A judge cannot detect a wrong number that nothing contradicts, and no better
+judge will, because the information is not in the trace. Intervention is not
+bounded this way — it generates evidence by re-running the agent instead of
+searching for evidence already recorded.
 
 ## Why this is not a solved problem
 

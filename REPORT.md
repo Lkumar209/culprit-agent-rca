@@ -13,11 +13,15 @@ Arize Phoenix.**
 > comes with an ability no inspection method has: declining to name anyone on
 > runs that did not fail (97.8-100% vs 0%).
 >
-> **What this does not establish:** *why* inspection plateaus at 0.54. The
-> judge is not failing for lack of information -- it finds silent faults as
-> readily as overt ones. Its residual errors are broad (typically 3.26 spans)
-> and unsystematic, which rules out a simple cause-versus-symptom confusion but
-> does not replace it with a mechanism. That remains open.
+> **Why inspection plateaus there** is a tested mechanism rather than an open
+> question. Inspection is bounded by whether the trace contains a
+> **contradiction** -- not by fault visibility (no silent/overt gap at all) and
+> not by which side of the agent/tool boundary the fault sits on. Two
+> observation-phase faults that are identical in phase and both silent, differing
+> only in whether the response contradicts its own request, score **1.000 and
+> 0.000**. Intervention is 1.000 on both, because it generates the missing
+> evidence rather than searching for it. The prediction was stated before the
+> fault that tests it was written.
 
 ---
 
@@ -261,6 +265,61 @@ on overt -- a gap where the scripted arm had none. With 11 overt traces the
 confidence intervals are [0.27, 0.59] and [0.43, 0.90]; they overlap heavily.
 The honest statement is that this arm is underpowered on that comparison and
 the question stays open, not that the parity reverses.
+
+### 4.7 Why inspection plateaus: contradiction, not visibility
+
+The 0.54 ceiling had no mechanism attached to it, and the obvious candidates
+were wrong. It is not fault visibility: the judge scores 0.545 on silent faults
+and 0.537 on overt, no gap. It is not trace length, which is non-monotonic once
+fault type is controlled for. Breaking accuracy down by fault exposed a clean
+split instead:
+
+| fault sits on | judge accuracy |
+|---|---|
+| **decision** side (the agent asked for the wrong thing) | **0.921** [0.87, 0.95] |
+| **observation** side (the tool returned the wrong thing) | **0.360** [0.31, 0.41] |
+
+The proposed mechanism: a decision fault creates an *internal contradiction*.
+The agent requested `V1007` when an earlier span established `V1003` -- two
+spans in the trace disagree, and reading is enough to find it. An observation
+fault produces data that is **externally wrong but internally consistent**: a
+tool returned 8,857 cents and nothing else in the trace says what it should have
+been. There is no contradiction, so there is nothing to read.
+
+That pattern was found by looking at the data, which makes it a hypothesis and
+not a result. So it was turned into a prediction on a fault that did not exist
+yet:
+
+> An **observation-phase** fault engineered to contradict its own request should
+> score like a decision fault (~0.9), not like its phase-mates (~0.36). If phase
+> is what matters it will score ~0.36; if contradiction is what matters it will
+> score ~0.9.
+
+`contradictory_echo` serves another vendor's invoices *and* echoes that vendor's
+id, so the response visibly disagrees with the request that produced it. The
+data is exactly as wrong as `stale_amounts`; the only difference is that the
+trace now contains the evidence.
+
+| fault | phase | contradiction? | judge | replay |
+|---|---|---|---|---|
+| `hallucinated_arg` | decision | yes | 0.982 | 1.000 |
+| **`contradictory_echo`** | **observation** | **yes** | **1.000** [0.95, 1.00] | 1.000 |
+| `stale_amounts` | observation | no | **0.000** [0.00, 0.12] | 1.000 |
+
+Two observation-phase faults, both silent, identical in every structural respect
+except the presence of a contradiction: **1.000 against 0.000**, with
+non-overlapping intervals. Replay is unaffected at 1.000 throughout.
+
+**The ceiling on inspection is the presence of evidence in the trace, not the
+capability of the reader.** A judge cannot detect a wrong number that nothing
+contradicts, and no better judge will, because the information required is not
+there. Intervention is not bounded this way: it does not search the trace for
+evidence, it generates evidence by re-running the agent.
+
+One honest caveat: `contradictory_echo` was designed to be maximally
+contradictory, so 1.000 is an upper bound rather than a typical value. The
+result that carries the weight is the *contrast* with `stale_amounts` at 0.000,
+which holds phase and visibility fixed.
 
 ## 5. The process, honestly
 

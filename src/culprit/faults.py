@@ -39,6 +39,13 @@ FAULT_CATALOG: dict[str, tuple[str, str]] = {
     "truncated_page": ("observation", "silent"),
     "empty_result": ("observation", "silent"),
     "tool_error": ("observation", "overt"),
+    # A held-out probe, not part of the main corpus. Observation-phase like
+    # its neighbours above, but engineered to contradict its own request:
+    # the response echoes a different vendor_id than the one asked for. It
+    # tests whether an inspecting judge is limited by which side of the
+    # agent/tool boundary a fault sits on, or by whether the trace contains
+    # a contradiction to notice.
+    "contradictory_echo": ("observation", "silent"),
     # Decision-phase: the agent asks for the wrong thing.
     "hallucinated_arg": ("decision", "silent"),
     "arg_typo": ("decision", "overt"),
@@ -103,6 +110,8 @@ class Injector:
             return tool == "list_invoices" and bool(res.get("invoices"))
         if f == "tool_error":
             return tool in ("find_order", "list_invoices", "get_vendor")
+        if f == "contradictory_echo":
+            return tool == "list_invoices" and bool(res.get("invoices"))
         return False
 
     def _signature_of(self, phase: str, payload: dict[str, Any]) -> tuple[Any, ...]:
@@ -167,6 +176,22 @@ class Injector:
         elif f == "empty_result":
             res["invoices"] = []
             res["has_more"] = False
+        elif f == "contradictory_echo":
+            # Serve another vendor's invoices AND echo that vendor's id, so
+            # the response visibly disagrees with the request that produced
+            # it. The data is as wrong as `stale_amounts`; the difference is
+            # that the trace now contains the evidence.
+            asked = str(p.get("args", {}).get("vendor_id", ""))
+            alt = self.world.confusable_with(asked) if asked else None
+            if alt:
+                rows = self.world.invoices_for(alt, p.get("args", {}).get("quarter"))
+                res["vendor_id"] = alt
+                res["invoices"] = [
+                    {"invoice_id": i.invoice_id, "quarter": i.quarter,
+                     "amount_cents": i.amount_cents, "status": i.status}
+                    for i in rows[:3]
+                ]
+                res["has_more"] = False
         elif f == "tool_error":
             p["ok"] = False
             p["error"] = "upstream 503: service temporarily unavailable"

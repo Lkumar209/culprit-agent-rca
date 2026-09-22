@@ -15,6 +15,56 @@ implicated; a span that does not is a bystander, however suspicious it looks.
 
 ---
 
+## Why this use case
+
+2026 is the year agents went to production. Every observability vendor now ships
+agent tracing, and every framework emits spans. The result is that when a
+multi-step agent gets an answer wrong, an engineer has *more* telemetry than
+ever and still no answer to the only question they have: **which step broke it?**
+
+Tracing tells you what happened. It does not tell you what was *responsible*.
+Those are different questions, and the gap between them is where debugging time
+actually goes. This project is an attempt to close it, and to find out what the
+limits are.
+
+## Phoenix workflows explored
+
+Both, deliberately -- the two answer different questions and the project needed
+both answers.
+
+**Observability.** The agent is instrumented with OpenInference semantic
+conventions and exports over OTLP to a self-hosted Phoenix. Localization then
+reads those spans back through `phoenix.client` and writes its verdict as a
+**span annotation** (`annotator_kind="CODE"`), so the accusation lands on the
+span it accuses, inside the UI the engineer already has open. Round-trip
+fidelity is verified: localizing traces read back out of Phoenix agrees with
+localizing them in-process on 100% of cases.
+
+**Experimentation.** The benchmark itself runs as Phoenix **datasets**,
+**experiments** and **evaluators** (`experiments/exp07_phoenix_experiments.py`).
+547 failed traces become dataset examples -- input is what a localizer may see,
+output is the known culprit span, metadata carries the fault type, visibility
+and phase for slicing in the UI. Each of the eight localizers is an experiment
+task. `correct_span`, `reciprocal_rank`, `blame_distance` and `replay_cost` are
+evaluators. A second dataset of *non-failing* runs scores abstention, where the
+correct behaviour is to name nobody.
+
+```
+culprit-failed-traces (120 examples)
+  experiment            correct_span   reciprocal_rank   replay_cost
+  cf_bisect             1.000          1.000             3.75
+  cf_exhaustive         1.000          1.000             4.89
+  llm_trace_judge       0.558          0.649             0.00
+  first_error           0.192          0.361             0.00
+  last_span             0.000          0.217             0.00
+
+culprit-healthy-traces (40 examples)
+  experiment            stayed_quiet
+  cf_bisect             1.000
+  output_anomaly        0.300
+  first_error           0.000
+```
+
 ## What this establishes
 
 On 547 failed agent runs with known ground truth, **counterfactual intervention
@@ -407,6 +457,52 @@ evaluation corpus. Each assertion was verified to fail when the bug it guards
 is reintroduced.
 
 ---
+
+## Learnings worth passing on
+
+Six things this cost me time to find out, in rough order of how much they would
+save someone else.
+
+**1. Instrument your tools to make corruption self-contradicting.** The single
+most actionable result here. Having `list_invoices` return a server-side
+`n_matching` and `total_matching_cents` beside its rows lifted a judge from
+0.344 to 0.478 -- a 39% relative improvement bought with a response field, not a
+model upgrade. If a tool returns data nothing else can check, a reader has
+nothing to work with.
+
+**2. The contradiction has to be cheap to check, not merely present.** Adding
+the summary did nothing for `stale_amounts` (0.000 -> 0.036), because catching
+it means summing rows across pages and comparing to a total at 5-25% drift.
+Emit summaries that expose corruption by *counting* or by *magnitude*. Exact
+cross-span arithmetic is evidence a model will not use.
+
+**3. Do not build your own experiment runner.** I wrote ~150 lines that ran a
+task over a corpus, scored it, stored results and compared methods -- which is
+exactly what Phoenix Experiments does. Moving to datasets + experiments +
+evaluators gave per-example drill-down (click the trace where `first_error`
+failed and see what it said instead) and made adding a method one more
+experiment instead of a new column in a script. I should have started there.
+
+**4. A mean signed error will lie to you.** I reported that judges were "off by
+about one span" from a mean offset of +1.06 and nearly published it. Mean
+*absolute* offset is 3.26. The signed mean was small because errors in opposite
+directions cancelled. It also mattered: "nearly right" implies you can cheaply
+search the neighbourhood, and you cannot.
+
+**5. Cache keys must not contain anything random.** Span ids were `uuid4`, and
+they get rendered into every judge prompt. Identical traces therefore produced
+different prompts on every run, the response cache never hit across processes,
+and ~$1 of API calls was wasted before a `cached 0, new 100` line gave it away.
+Deterministic ids made the corpus byte-reproducible and the judge arm then
+re-ran for $0.00.
+
+**6. Test that your results still reproduce, not just that your code works.**
+Adding a diagnostic fault silently enrolled it in the evaluation corpus; 547
+traces became 616 and every published figure stopped reproducing. 36 passing
+tests said nothing, because they all checked that the benchmark was *correct*
+and none checked that it still produced *the reported result*. Those are
+different properties. `tests/test_results_reproduce.py` now covers the second,
+and was verified by reintroducing the bug.
 
 ## Layout
 

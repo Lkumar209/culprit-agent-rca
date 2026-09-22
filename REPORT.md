@@ -27,6 +27,11 @@ Arize Phoenix.**
 
 ## 1. The question
 
+2026 is the year agents went to production. Every observability vendor ships
+agent tracing now, and every framework emits spans. The effect is that an
+engineer whose multi-step agent returns a wrong answer has more telemetry than
+ever and still no answer to the only question they have: which step broke it?
+
 Phoenix records what an agent did. When a multi-step run fails, it shows the
 whole trace tree and tells you the run failed. It does not tell you *which step
 caused it*, and in a trace of a dozen spans that is the only question the
@@ -361,6 +366,49 @@ merely present.** That is a more useful claim than the one it replaces, because
 it says what kind of instrumentation pays: emit summaries that make corruption
 visible by counting or by magnitude, not ones that require exact arithmetic
 across spans to reconcile.
+
+## 4.9 Using Phoenix as a user, not as a span store
+
+The first version of this benchmark shipped with its own runner: sweep a corpus,
+score each method, print a table. It worked, and it was the wrong call. Phoenix
+*is* an experimentation product, and a ~150-line custom harness that runs a task
+over a corpus, scores it, stores results and compares methods is a
+reimplementation of the feature. Writing it meant never finding out what that
+feature does well.
+
+The benchmark now runs both Phoenix workflows.
+
+**Observability.** The agent exports OpenInference spans over OTLP. Localization
+reads them back through `phoenix.client` and writes its verdict as a span
+annotation with `annotator_kind="CODE"`, so the accusation lands on the span it
+accuses and is filterable apart from human and LLM annotations. Round-trip
+fidelity is verified rather than assumed: localizing traces read back out of
+Phoenix agrees with localizing them in-process on 100% of cases. That check
+caught a real bug -- an early read returned *partial* traces, because OTLP export
+and Phoenix ingestion are both asynchronous, and a partial trace silently
+corrupts localization since replay reconstructs the agent's steps from the spans
+it can see.
+
+**Experimentation.** Failed traces become dataset examples: input is what a
+localizer may see, output is the known culprit span, metadata carries fault
+name, visibility and phase so results can be sliced in the UI. Each localizer is
+an experiment task; `correct_span`, `reciprocal_rank`, `blame_distance` and
+`replay_cost` are evaluators. A second dataset of non-failing runs scores
+abstention, where naming nobody is correct.
+
+Two things this bought that the custom runner did not. Results became
+inspectable per example -- you can open the trace where `first_error` failed and
+read what it accused instead -- and comparison became the product's job, so
+adding a method later is one more experiment rather than a new column in a
+script.
+
+The friction worth recording, because anyone doing this will hit it: a dataset
+example is JSON, but a localizer needs a live `Trace`, and the replay methods
+additionally need a world and an armed fault injector that cannot be serialized.
+The example therefore carries the *recipe* -- case id, fault, target step, seed --
+and the task rehydrates the case locally. That keeps the dataset honest, holding
+only what a Phoenix user could actually store, at the cost of the task needing
+the benchmark package importable.
 
 ## 5. The process, honestly
 

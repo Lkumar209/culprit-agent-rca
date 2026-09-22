@@ -383,11 +383,23 @@ judgement.
 Reproduce the experiments:
 
 ```bash
-python experiments/exp01_free_arm.py
-python experiments/exp02_repair_sweep.py
-python experiments/exp03_abstention.py
-python experiments/exp04_judge_arm.py --dry-run   # costs the judge sweep first
+# free — no API key, no spend
+python experiments/exp01_free_arm.py           # heuristics vs counterfactual replay
+python experiments/exp02_repair_sweep.py       # accuracy vs repair reliability
+python experiments/exp03_abstention.py         # behaviour on runs that did not fail
+python experiments/exp07_phoenix_experiments.py --no-judge   # datasets + experiments
+
+# needs ANTHROPIC_API_KEY in .env  (~$2 total, then cached and free to re-run)
+python experiments/exp04_judge_arm.py --dry-run   # prices the sweep before spending
+python experiments/prewarm_judges.py              # fills the cache in parallel
+python experiments/exp04_judge_arm.py             # the LLM-judge baseline
+python experiments/exp05_llm_agent.py             # replication with a real LLM agent
+python experiments/exp06_instrumentation.py       # does instrumenting the tool help?
 ```
+
+Every response is cached on disk by model plus exact prompt, so re-running after
+a scoring change costs nothing and returns byte-identical judgements — a change
+in the results is then always a change in the code, never in the sampling.
 
 ---
 

@@ -208,10 +208,28 @@ at.
 ## Quickstart
 
 ```bash
-pip install -e ".[server,dev]"
-phoenix serve                      # self-hosted Phoenix on :6006
-culprit doctor                     # check the connection
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[server,judges,dev]"
+
+phoenix serve                       # self-hosted Phoenix on :6006
+culprit doctor                      # check the connection
 culprit demo --project culprit-demo
+```
+
+Extras: `server` pulls in Phoenix itself (skip it if you already run one),
+`judges` adds the Anthropic client for the LLM-judge baselines, `dev` adds
+pytest. The core package needs none of them.
+
+`demo` prints, for example:
+
+```
+exporting 36 traces (30 failed, 6 healthy) to project 'culprit-demo' ...
+reading them back through the Phoenix client ...
+  36 traces recovered from Phoenix
+localizing with cf_exhaustive_x3 (signal=changed) ...
+
+  failed traces localized : 30/30  (100.0%)
+  healthy traces abstained: 6/6
 ```
 
 `demo` manufactures agent runs with known faults, ships them to Phoenix as

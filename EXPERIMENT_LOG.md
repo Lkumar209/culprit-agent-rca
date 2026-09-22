@@ -168,16 +168,85 @@ what design change came out of it.
   offset metric: top-1 accuracy alone said "95%, good enough" and hid a bug
   that the direction-of-error breakdown made obvious in one table.
 
-## PENDING — exp04, the LLM-judge arm
+## 2026-09-21 — Nondeterministic span ids (a cache that could never hit)
 
-- **Purpose:** The baseline a reviewer asks for first. If a model can just read
-  the trace and name the culprit, intervention is an expensive way to buy the
-  same answer. Hypothesis: a silent fault leaves a locally unremarkable span,
-  so judges should track `first_error` — respectable on overt faults, poor on
-  silent ones — largely regardless of model capability.
-- **Status:** Implemented, not run. Needs an `ANTHROPIC_API_KEY`. Planned:
-  Claude Haiku 4.5, whole-trace judge over all 546 failures, per-span judge
-  over a 150-trace stratified subsample, plus the judge-guided hybrid (which
-  reuses cached judge calls and so costs nothing extra). Run
-  `--dry-run` first — it prices the sweep with the token counter before
-  spending anything.
+- **Purpose:** Run the judge arm. Stopped a sequential run at 226/546 to
+  parallelise it, expecting the 275 already-paid responses to be reused.
+- **Result:** The prewarm reported `cached 0, new 100`. The cache was hitting
+  nothing.
+- **Cause:** Span ids were random uuid4s regenerated on every corpus build, and
+  they are rendered into every judge prompt as the handle the model answers
+  with. Identical traces therefore produced different prompts on every build,
+  so the cache could never hit across processes.
+- **Cost:** ~$1.03 wasted — $0.55 on the killed sequential run, $0.42 on the
+  first prewarm, both unusable. My error: the cache's docstring claimed
+  re-runs were free and I never verified a cross-process hit before relying
+  on it.
+- **Design change:** Span ids now derive from a stable `run_id`; the corpus is
+  byte-reproducible, asserted by `test_corpus_is_byte_reproducible`. This was a
+  reproducibility bug independent of cost — the benchmark was not reproducible
+  at all. Verified the fix by checking cache-file existence from a *fresh*
+  process (60/60 hits) rather than asserting it again.
+
+## 2026-09-21 — Strengthening the baselines before trusting the headline
+
+- **Purpose:** `first_error` scoring 0.000 on silent faults is true but easy to
+  dismiss — of course an error-hunting heuristic finds nothing when there is no
+  error. The claim that *inspection itself* cannot see a silent fault needs a
+  heuristic that genuinely tries.
+- **Run:** Added `output_anomaly`, a domain-agnostic detector that scores each
+  tool call against the other calls of the same tool in the same trace
+  (z-score on numeric leaves, plus empty-collection detection). It knows
+  nothing about the domain or the fault taxonomy.
+- **Cost:** $0.
+- **Result:** 0.139 on silent faults — better than `first_error`'s 0.000, and
+  the best MRR of any heuristic (0.412), but still far below replay. The
+  information is not in the span.
+- **Design change:** Added to the default baseline set. Closes the "you rigged
+  the baselines" objection.
+
+## 2026-09-21 — exp04, the LLM-judge arm (hypothesis refuted)
+
+- **Purpose:** Test whether a model reading the trace can localise the culprit,
+  and specifically whether it goes blind on silent faults the way `first_error`
+  does.
+- **Run:** Claude Haiku 4.5. Whole-trace judge over all 547 failures; per-span
+  judge and judge-guided replay over a 63-trace stratified subsample. 1,220
+  prompts prewarmed 8-way parallel; the experiment itself then ran from cache.
+- **Cost:** $2.011 for the prewarm, **$0.000 for the experiment run** (1,346
+  cache hits) — the determinism fix paying for itself immediately.
+- **Result:** **The hypothesis was wrong.** The whole-trace judge scores 0.543
+  overall and, critically, 0.545 on silent faults vs 0.537 on overt — no gap at
+  all. It is not keying on error markers; it reconstructs the run's arithmetic
+  from the trace. Two supporting findings: the per-span judge is *worse* than
+  the whole-trace judge (0.413 vs 0.476 on identical traces), which supports the
+  locality argument even as it undercuts the blindness one; and the direction
+  metric shows judges fail by ~1 span in either direction (mean offset +1.06)
+  where `first_error` fails by +7.72, always downstream.
+- **Design change:** None to the code. The README's framing changed: the judge
+  is a genuinely good cheap localizer, not a strawman, and the honest claim is
+  about the accuracy/cost frontier rather than judge blindness.
+
+## 2026-09-21 — Guided replay: a wrong algorithm, then a confound
+
+- **Purpose:** Use a cheap scorer to order replay probes and cut cost.
+- **Result 1 (a real bug):** Guided replay scored 0.768 against the unguided
+  scan's 1.000. Probing in suspicion order breaks the invariant that makes the
+  scan correct: when a fault propagates, repairing *any* downstream span that
+  carries the corruption also changes the outcome, so a confirmation proves only
+  that the culprit is at or before that span — never that it *is* that span.
+- **Design change 1:** A confirmation is now an upper bound, followed by
+  bisection below it. Diagnosis then showed all 127 remaining misses were "no
+  confirmation within max_probes", where the method fell back to the scorer's
+  unverified ranking — so that fallback became a full bisection instead.
+  Accuracy returned to 1.000.
+- **Result 2 (a confound in my own benchmark):** Even corrected, guidance cost
+  *more* than plain bisection (5.7-7.1 vs 3.74 replays), with the LLM judge as
+  scorer too. Depth analysis showed why: faults are injected at steps 0-3, so
+  62% of culprits are found within 4 probes and a left-to-right scan is already
+  near-optimal. That is a property of my injection schedule, not of guidance.
+- **Design change 2:** Re-ran on a corpus with deeper injection points (steps
+  2-7). Exhaustive degraded 4.67 → 7.70 replays; bisection held at 3.74 → 4.17;
+  guidance still did not win. **Conclusion: prefix bisection is the method to
+  ship** — cheapest, depth-independent, equally accurate — and guided replay is
+  a reported negative result rather than the headline it was meant to be.

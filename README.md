@@ -37,19 +37,80 @@ Benchmark: 547 failed runs of a tool-using agent over a synthetic business
 domain, 9 fault types, median 11 spans per trace, one injected fault per run so
 the correct answer is known by construction.
 
-**Top-1 localization accuracy** (`experiments/exp01_free_arm.py`):
+**Top-1 localization accuracy** (`experiments/exp01_free_arm.py`, `exp04_judge_arm.py`):
 
-| method | top-1 | silent faults | overt faults | replays/trace |
-|---|---|---|---|---|
-| `last_span` | 0.000 | 0.000 | 0.000 | 0 |
-| `random` | 0.097 | 0.097 | 0.138 | 0 |
-| `earliest_tool` | 0.102 | 0.059 | 0.252 | 0 |
-| `first_error` | 0.177 | **0.000** | 0.789 | 0 |
-| `cf_bisect` | **1.000** | 1.000 | 1.000 | 3.7 |
-| `cf_exhaustive` | **1.000** | 1.000 | 1.000 | 4.7 |
+| method | top-1 | silent faults | overt faults | replays | LLM calls |
+|---|---|---|---|---|---|
+| `last_span` | 0.000 | 0.000 | 0.000 | 0 | 0 |
+| `random` | 0.080 | 0.073 | 0.106 | 0 | 0 |
+| `earliest_tool` | 0.102 | 0.059 | 0.252 | 0 | 0 |
+| `output_anomaly` | 0.165 | 0.139 | 0.252 | 0 | 0 |
+| `first_error` | 0.177 | **0.000** | 0.789 | 0 | 0 |
+| `llm_trace_judge` | 0.543 | **0.545** | 0.537 | 0 | 1 |
+| `cf_exhaustive` | **1.000** | 1.000 | 1.000 | 4.67 | 0 |
+| `cf_bisect` | **1.000** | 1.000 | 1.000 | **3.74** | 0 |
 
-The replay numbers above assume a *perfect* repair oracle. That is a ceiling,
-not a product claim. Sweeping repair reliability downward
+Four things in that table are worth more than the headline:
+
+**1. The find-the-red-span heuristic scores exactly zero on silent faults**, which
+are 424 of the 547 failures. That is not a rigged baseline: `output_anomaly` is
+a domain-agnostic statistical detector that compares each tool call against the
+other calls of that tool in the same trace, and it reaches only 0.139. The
+information is not in the span.
+
+**2. The LLM judge is not blind to silent faults — this refuted the project's
+starting hypothesis.** I predicted judges would track `first_error`: fine on
+overt faults, useless on silent ones. Instead the whole-trace judge scores
+*identically* on both (0.545 silent vs 0.537 overt). It is not keying on error
+markers; it reconstructs the run's arithmetic from the trace. A judge is a
+genuinely good cheap localizer — roughly 3× the best heuristic for one API call.
+
+**3. Judges fail differently from heuristics**, which is why the direction of
+error is measured and not just the rate:
+
+| method | blames downstream | blames upstream | mean offset |
+|---|---|---|---|
+| `first_error` | 100% | 0% | +7.72 |
+| `llm_trace_judge` | 57.6% | 42.4% | **+1.06** |
+
+`first_error` fails by blaming the end of the trace. The judge, when wrong, is
+off by about one span in either direction — nearly right, hence its 0.636 MRR.
+That difference matters: a method that is nearly right can be cheaply corrected,
+and one that points at the final answer cannot.
+
+**4. Per-span judging is *worse* than whole-trace judging** (0.413 vs 0.476 on
+the same 63 traces). Judging a span in isolation removes exactly the context
+needed to notice that a plausible value is wrong.
+
+### Cost, and why bisection wins
+
+`cf_exhaustive` stops at the earliest causal span, so it pays for the culprit's
+depth. `cf_bisect` is O(log n) and does not. Faults here are injected at steps
+0-3, which puts culprits near the front and flatters the linear scan, so the
+comparison is repeated on a corpus with deeper injection points:
+
+| method | culprits at steps 0-3 | culprits at steps 2-7 |
+|---|---|---|
+| `cf_exhaustive` | 4.67 replays | 7.70 |
+| `cf_bisect` | **3.74 replays** | **4.17** |
+| `cf_guided_anomaly` | 6.82 replays | 7.90 |
+
+**Bisection is the one to use**: cheapest, depth-independent, equally accurate.
+
+**Guided replay does not earn its cost — a negative result.** Ordering probes by
+suspicion and stopping at the first confirmation is *wrong*: when a fault
+propagates, repairing any downstream span that carries the corruption also
+changes the outcome, so a confirmation proves only that the culprit is at or
+before that span. Treating it as a verdict cost 23 points of top-1 (1.000 →
+0.768). Corrected — confirmation as an upper bound, then bisect below it, with a
+full-bisection fallback when the shortlist misses — accuracy returns to 1.000
+but costs 5.7-7.1 replays, more than plain bisection. This held with the LLM
+judge as scorer too. A scorer only pays if it is cheaper than the search it
+replaces, and bisection is already very cheap.
+
+### Repair reliability is the binding constraint
+
+The 1.000 figures assume a perfect repair oracle. Sweeping that downward
 (`experiments/exp02_repair_sweep.py`) is the honest picture:
 
 | repair success | `cf_bisect` | `cf_exhaustive` | `cf_exhaustive` ×3 samples |
@@ -60,33 +121,29 @@ not a product claim. Sweeping repair reliability downward
 | 0.5 | 0.325 | 0.512 | 0.888 |
 | 0.3 | 0.161 | 0.324 | 0.676 |
 
-Three things fall out of this:
+Accuracy is dominated by repair quality, not search strategy. Bisection degrades
+fastest — its efficiency comes from committing to each probe, which is exactly
+what hurts when probes are noisy. Sampling each span three times restores 0.667
+→ 0.976 at p=0.7 for ~2.1× the replays. **If you can only tune one thing, tune
+the repair, not the search.**
 
-1. **Repair quality is the binding constraint**, not the search strategy.
-2. **Bisection is cheap but brittle.** It holds at a flat ~3.7 replays per trace
-   regardless of trace length, but its efficiency comes from committing to each
-   probe, which is exactly what hurts when probes are noisy.
-3. **Sampling buys most of it back.** Probing each span three times restores
-   0.67 → 0.98 at p=0.7, for roughly 2.1× the replays.
+### The label-free signal, with a caveat that matters
 
-**The label-free signal costs nothing here — with a caveat that matters.**
 Deciding "did the answer *change*" needs no ground truth and is what a real
 Phoenix user can compute; deciding "did the answer become *correct*" needs the
-gold answer. On this benchmark the two agree exactly, at every repair
-probability. But they agree *because the benchmark injects exactly one fault
-per run*, so any intervention that changes the answer also corrects it. On a
-trace with several interacting problems they would diverge, and that case is
-untested. Read this as "label-free evaluation is viable", not "label-free
-evaluation is free".
+gold answer. On this benchmark the two agree **exactly**, at every repair
+probability. But they agree *because the benchmark injects exactly one fault per
+run*, so any intervention that changes the answer also corrects it. On a trace
+with several interacting problems they would diverge, and that case is untested.
+Read this as "label-free evaluation is viable here", not "label-free evaluation
+is free".
 
-**It knows when to say nothing** (`experiments/exp03_abstention.py`). Pointed at
-runs that did not fail, counterfactual methods abstain on 97.8–100% of them.
-Every heuristic names a suspect 100% of the time, because a heuristic always has
-a "last span" to point at.
+### It knows when to say nothing
 
-> The LLM-judge baseline (`experiments/exp04_judge_arm.py`) is implemented but
-> **has not been run** — it needs an API key. Until it is, this repo makes no
-> claim about how a model-based judge compares.
+Pointed at runs that did not fail (`experiments/exp03_abstention.py`),
+counterfactual methods abstain on 97.8-100% of them. Every heuristic names a
+suspect 100% of the time, because a heuristic always has a "last span" to point
+at.
 
 ---
 

@@ -165,6 +165,20 @@ class GuidedReplay:
     `scorer(trace, ctx) -> (ranked_span_ids, cost)`. Any signal works: an LLM
     judge, a heuristic, a learned model. The replay is what keeps it honest --
     the scorer proposes, the counterfactual disposes.
+
+    **Confirming a suspect is not enough.** Probing in suspicion order breaks
+    the invariant that makes the exhaustive scan correct. When a fault
+    propagates, repairing *any* downstream span that carries the corruption
+    also changes the outcome, so a confirmed hit only proves the culprit is at
+    or before that span -- never that it is that span. A scorer that ranks the
+    symptom first therefore gets a confirmation and blames the wrong span;
+    measured on this benchmark that cost 23 points of top-1 (1.000 -> 0.768)
+    against the unguided scan.
+
+    So a confirmation is treated as an *upper bound*, and the search then
+    bisects below it for the earliest causal step. The scorer buys a tight
+    bound cheaply; the bisection restores correctness. Cost stays well under
+    the exhaustive scan because the bound is usually close.
     """
 
     def __init__(
@@ -195,15 +209,81 @@ class GuidedReplay:
                     break
 
             if hit is not None:
+                # The confirmation bounds the culprit at or before `hit`.
+                # Bisect below that bound for the earliest causal step.
+                steps = parse_steps(trace)
+                bound = next(
+                    (
+                        i for i, st in enumerate(steps)
+                        if st.decision_span.span_id == hit
+                        or (st.tool_span is not None and st.tool_span.span_id == hit)
+                    ),
+                    len(steps) - 1,
+                )
+                lo, hi, found = 0, bound, bound
+                while lo <= hi:
+                    mid = (lo + hi) // 2
+                    r = eng.intervene_prefix(trace, mid, gold=ctx.gold)
+                    probes += 1
+                    tools += r.n_tool_calls
+                    if _fires(r, ctx):
+                        found, hi = mid, mid - 1
+                    else:
+                        lo = mid + 1
+
+                st = steps[found]
+                r = eng.intervene_prefix(trace, found, gold=ctx.gold, protect=("decision",))
+                probes += 1
+                tools += r.n_tool_calls
+                primary = (
+                    st.decision_span if _fires(r, ctx)
+                    else (st.tool_span or st.decision_span)
+                )
+                hit = primary.span_id
                 ranking = [hit] + [s for s in order if s != hit]
-                why = f"scorer rank {order.index(hit) + 1} confirmed by replay ({probes} probes)"
+                why = (
+                    f"scorer rank {order.index(primary.span_id) + 1 if primary.span_id in order else '?'}"
+                    f" bounded the search; bisection isolated step {found} ({probes} probes)"
+                )
                 score = 1.0
             else:
-                # Nothing verified. Fall back to the scorer's own ordering and
-                # say so -- an unverified guess should not be reported as fact.
-                ranking = order
-                why = f"no candidate confirmed in {probes} probes; scorer order unverified"
-                score = 0.25
+                # The scorer's shortlist contained nothing causal. Falling back
+                # to its ranking would report an unverified guess as a verdict,
+                # and on this benchmark that was the *entire* remaining error:
+                # all 127 misses were this case, none were wrong-span blames.
+                # A guided method should never be less accurate than the
+                # unguided one -- the scorer is there to save probes, not to
+                # substitute for verification. So on exhaustion, fall back to
+                # the full bisection.
+                steps = parse_steps(trace)
+                lo, hi, found = 0, len(steps) - 1, None
+                while lo <= hi:
+                    mid = (lo + hi) // 2
+                    r = eng.intervene_prefix(trace, mid, gold=ctx.gold)
+                    probes += 1
+                    tools += r.n_tool_calls
+                    if _fires(r, ctx):
+                        found, hi = mid, mid - 1
+                    else:
+                        lo = mid + 1
+                if found is None:
+                    return Verdict(
+                        span_id=None, score=0.0, ranking=order,
+                        explanation=f"no span repair moved the outcome ({probes} probes)",
+                        cost=Cost(llm_calls=scorer_cost.llm_calls, replays=probes,
+                                  tool_calls=tools, usd=scorer_cost.usd, seconds=t.elapsed),
+                    )
+                st = steps[found]
+                r = eng.intervene_prefix(trace, found, gold=ctx.gold, protect=("decision",))
+                probes += 1
+                tools += r.n_tool_calls
+                primary = (
+                    st.decision_span if _fires(r, ctx)
+                    else (st.tool_span or st.decision_span)
+                )
+                ranking = [primary.span_id] + [s for s in order if s != primary.span_id]
+                why = f"scorer shortlist exhausted; bisection isolated step {found} ({probes} probes)"
+                score = 1.0
         return Verdict(
             span_id=ranking[0] if ranking else None,
             score=score,

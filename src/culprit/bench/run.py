@@ -18,7 +18,8 @@ from typing import Any, Callable, Iterable
 from ..localizers.base import Context, Cost, Localizer, Verdict
 from ..localizers.counterfactual import BisectReplay, ExhaustiveReplay, GuidedReplay
 from ..localizers.heuristics import (
-    EarliestToolLocalizer, FirstErrorLocalizer, LastSpanLocalizer, RandomLocalizer,
+    EarliestToolLocalizer, FirstErrorLocalizer, LastSpanLocalizer,
+    OutputAnomalyLocalizer, RandomLocalizer,
 )
 from .corpus import Case, build_corpus, summarize
 from .metrics import Row, aggregate, score, table, wilson
@@ -32,6 +33,7 @@ def default_methods() -> list[Localizer]:
         LastSpanLocalizer(),
         FirstErrorLocalizer(),
         EarliestToolLocalizer(),
+        OutputAnomalyLocalizer(),
         ExhaustiveReplay(),
         BisectReplay(),
     ]

@@ -2,6 +2,10 @@
 
 **Root-cause localization for failed agent traces in [Arize Phoenix](https://github.com/Arize-ai/phoenix).**
 
+> 📖 **New here? Start with the [Cookbook](COOKBOOK.md)** — an hour-long
+> walkthrough of building this, the mistakes worth avoiding, and how to apply it
+> to your own agent. This README is the reference; the cookbook is the tutorial.
+
 When a multi-step agent run goes wrong, Phoenix shows you *that* it failed and
 gives you the whole trace tree. It does not tell you *which step* caused it.
 `culprit` answers that question: it reads OpenInference spans from a self-hosted
@@ -522,6 +526,10 @@ and was verified by reintroducing the bug.
 | `src/culprit/bench/` | corpus construction, metrics, experiment runner |
 | `src/culprit/cli.py` | `culprit doctor` / `demo` / `analyze` |
 | `experiments/` | the six experiments and their saved results |
+| `COOKBOOK.md` | tutorial walkthrough — build it, and apply it to your agent |
+| `REPORT.md` | the applied-research write-up |
+| `EXPERIMENT_LOG.md` | audit trail: every run, including the ones that found bugs |
+| `src/culprit/phoenix_experiments.py` | datasets, experiment tasks and evaluators |
 | `docs/phoenix-ui.md` | how to capture the UI screenshot |
 
 `experiments/prewarm_judges.py` populates the judge response cache in parallel;

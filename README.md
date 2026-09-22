@@ -327,6 +327,15 @@ accuracy number into a 1.0 with nothing else complaining.
 Phoenix round-trip fidelity is checked directly: localizing traces read back out
 of Phoenix agrees with localizing them in-process on **100% of cases**.
 
+A separate suite (`tests/test_results_reproduce.py`) guards the *published
+numbers* rather than the benchmark's internal soundness — they are different
+properties, and only the first one originally had tests. It rebuilds the corpus
+and asserts its composition still matches the record saved alongside the
+results, re-runs the zero-cost localizers and asserts their top-1 still matches
+to three decimals, and asserts no held-out probe fault has leaked into the
+evaluation corpus. Each assertion was verified to fail when the bug it guards
+is reintroduced.
+
 ---
 
 ## Layout

@@ -401,3 +401,25 @@ what design change came out of it.
   rather than by an experiment surfacing it, which is the argument for doing the
   audit at all: the bug was introduced by the very experiment that produced the
   project's strongest result, and nothing about that result looked wrong.
+
+## 2026-09-22 — Making the audit finding permanent
+
+- **Purpose:** The contamination in the previous entry was found by reading
+  code, not by anything failing. That is not a process anyone should rely on.
+- **Cost:** $0.
+- **Design change:** Added `tests/test_results_reproduce.py`, which guards the
+  *published* numbers rather than the benchmark's internal soundness -- a
+  distinction worth naming, because only the second property had tests and it
+  was the first one that broke. Three assertions: the rebuilt corpus still
+  matches the composition recorded beside the saved results; the zero-cost
+  localizers still reproduce their published top-1 to three decimals; and no
+  probe fault appears in a default corpus.
+- **Validation:** The guards were verified by *reintroducing* the bug -- setting
+  `build_corpus` back to defaulting over the whole catalog -- and confirming all
+  three fire with useful messages (`probe fault leaked into the corpus`, `corpus
+  drifted: published ... 547, now ... 616`, `case count changed, 547 -> 616`).
+  A guard that has never been seen to fail is not evidence of anything.
+- **Why only the free localizers are re-run:** they need no API key and no
+  replays, so the suite stays fast enough to run on every commit, and they are
+  sufficient -- any change to the world, tasks, agent or fault taxonomy moves
+  those numbers immediately.

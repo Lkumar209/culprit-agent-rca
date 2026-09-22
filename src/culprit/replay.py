@@ -36,6 +36,7 @@ from typing import Any, Callable
 
 from .agent import MAX_STEPS, ScriptedPolicy, SpanRec, Trace
 from .environment import Environment, as_environment
+from .tools import normalize_answer
 from .world import World
 
 
@@ -267,11 +268,11 @@ class ReplayEngine:
     def _finish(
         self, trace: Trace, answer: str | None, gold: str | None, n_tools: int, n_policy: int
     ) -> ReplayResult:
-        original = (trace.final_answer or "").strip()
-        new = (answer or "").strip()
+        original = normalize_answer(trace.final_answer)
+        new = normalize_answer(answer)
         return ReplayResult(
             changed=new != original,
-            fixed=bool(gold is not None and new == gold.strip()),
+            fixed=bool(gold is not None and new == normalize_answer(gold)),
             new_answer=answer,
             n_tool_calls=n_tools,
             n_policy_calls=n_policy,

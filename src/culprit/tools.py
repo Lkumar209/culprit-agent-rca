@@ -21,6 +21,7 @@ notice and one it cannot.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -166,6 +167,25 @@ def call_tool(world: World, name: str, args: dict[str, Any]) -> dict[str, Any]:
 # --------------------------------------------------------------------------
 # Tasks
 # --------------------------------------------------------------------------
+
+def normalize_answer(s: Any) -> str:
+    """
+    Canonical form for comparing an agent's answer against gold.
+
+    A model asked for "dollars to two decimal places" may answer `$1,669.00`.
+    That is the right answer in a different surface form, and scoring it as a
+    failure would be a grading artifact with real consequences here: the trace
+    would enter the corpus labelled "failed" while containing no injected fault
+    to localize, so every localizer would be scored against a culprit that does
+    not exist. Formatting compliance is not what this benchmark measures.
+    """
+    if s is None:
+        return ""
+    t = str(s).strip().replace("$", "").replace(",", "").strip().rstrip(".")
+    if re.fullmatch(r"-?\d+(\.\d+)?", t):
+        return f"{float(t):.2f}" if "." in t else str(int(t))
+    return t.upper()
+
 
 @dataclass(frozen=True)
 class Task:

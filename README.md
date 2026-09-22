@@ -138,6 +138,25 @@ with several interacting problems they would diverge, and that case is untested.
 Read this as "label-free evaluation is viable here", not "label-free evaluation
 is free".
 
+### The findings replicate on a real LLM agent
+
+`experiments/exp05_llm_agent.py` re-runs the pipeline with Claude Haiku 4.5
+making the agent's decisions -- same tools, tasks, faults and guards, only the
+decision-making replaced. 44 failed traces, 5/5 unfaulted tasks solved.
+
+| method | scripted agent (n=547) | LLM agent (n=44) |
+|---|---|---|
+| `cf_bisect` | 1.000 @ 3.74 replays | **1.000 @ 3.73 replays** |
+| `llm_trace_judge` | 0.543 | 0.500 |
+| `first_error` | 0.177 (silent **0.000**) | 0.136 (silent **0.000**) |
+| `output_anomaly` | 0.165 | 0.159 |
+
+The method transfers at identical cost and every ordering is preserved. The LLM
+agent also recovered from 55.6% of injected faults against the scripted
+policy's 45.6% -- a real model routes around corruption a credulous rule-based
+one swallows, meaning the main arm if anything *overstates* how damaging silent
+faults are.
+
 ### It knows when to say nothing
 
 Pointed at runs that did not fail (`experiments/exp03_abstention.py`),

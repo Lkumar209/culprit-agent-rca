@@ -49,6 +49,7 @@ def run_methods(
     llm: Any = None,
     statuses: tuple[str, ...] = ("failed",),
     progress: bool = True,
+    policy: Any = None,
 ) -> list[Row]:
     """Run every method over every case and score the verdicts."""
     rows: list[Row] = []
@@ -56,11 +57,12 @@ def run_methods(
     for i, case in enumerate(subset):
         if progress and i % 25 == 0:
             print(f"  case {i + 1}/{len(subset)} ...", flush=True)
-        injector = case.injector(world)
+        injector = case.injector(world, policy=policy)
         ctx = Context(
             world=world,
             env_injector=injector,
             repair_success_prob=repair_success_prob,
+            policy=policy,
             llm=llm,
             seed=seed,
             signal=signal,

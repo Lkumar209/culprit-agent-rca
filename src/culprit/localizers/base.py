@@ -51,6 +51,10 @@ class Context:
 
     world: Any = None
     env_injector: Any = None          # armed environment twin, for replay methods
+    # The policy that produced the trace. Replay must run the *same* agent
+    # forward; replaying an LLM agent's trace with the scripted policy would
+    # measure a counterfactual that never existed.
+    policy: Any = None
     repair_success_prob: float = 1.0
     llm: Any = None                   # LLMClient, when a judge needs one
     seed: int = 0

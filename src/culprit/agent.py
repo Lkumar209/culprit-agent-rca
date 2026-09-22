@@ -32,7 +32,7 @@ import uuid
 from dataclasses import dataclass, field, asdict
 from typing import Any, Callable, Protocol
 
-from .tools import Task, ToolError, call_tool
+from .tools import Task, ToolError, call_tool, normalize_answer
 from .world import QUARTERS, World
 
 MAX_STEPS = 24
@@ -369,7 +369,7 @@ def run_agent(
         observations.append(obs)
 
     root.output = {"answer": final_answer, "n_spans": len(spans)}
-    success = final_answer is not None and final_answer.strip() == task.gold
+    success = final_answer is not None and normalize_answer(final_answer) == normalize_answer(task.gold)
 
     if injector is not None:
         fault_name = getattr(injector, "fault_name", None)

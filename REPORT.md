@@ -196,6 +196,44 @@ the time. Every heuristic names a suspect 100% of the time, because a heuristic
 always has a "last span" to point at. A tool that always produces a culprit
 manufactures suspects.
 
+### 4.6 The findings replicate on a real LLM agent
+
+Everything above was measured on traces produced by rule-based Python. The
+same pipeline was then run with Claude Haiku 4.5 making the agent's decisions
+-- same tools, same tasks, same faults, same loop guard and step budget, with
+only `_propose` replaced, so any difference is attributable to the policy and
+not the scaffolding. 44 failed traces (33 silent, 11 overt), 55 recovered, 5
+clean. The agent solved 5/5 unfaulted tasks and emitted 4 unparseable replies
+across ~870 decisions.
+
+| method | scripted agent (n=547) | **LLM agent (n=44)** |
+|---|---|---|
+| `cf_bisect` | 1.000 @ 3.74 replays | **1.000 @ 3.73 replays** |
+| `llm_trace_judge` | 0.543 | 0.500 |
+| `first_error` | 0.177 (silent **0.000**) | 0.136 (silent **0.000**) |
+| `output_anomaly` | 0.165 | 0.159 |
+| `last_span` | 0.000 | 0.000 |
+
+**The method transfers.** Counterfactual bisection holds at 1.000 with
+essentially identical cost -- 3.73 replays against 3.74 -- on traces generated
+by a model rather than by rules. `first_error` again scores exactly zero on
+silent faults. The ordering of every method is preserved.
+
+Two differences are worth recording.
+
+**The LLM agent is more robust than the scripted one.** It recovered from 55.6%
+of injected faults, against the scripted policy's 45.6%. A real model sometimes
+routes around corruption that a credulous rule-based agent swallows -- which
+means the scripted arm, if anything, *overstates* how damaging silent faults
+are. That is the right direction for a limitation to point.
+
+**The judge's silent/overt parity may not hold, but this cannot be settled
+here.** On LLM-agent traces the judge scored 0.424 on silent faults and 0.727
+on overt -- a gap where the scripted arm had none. With 11 overt traces the
+confidence intervals are [0.27, 0.59] and [0.43, 0.90]; they overlap heavily.
+The honest statement is that this arm is underpowered on that comparison and
+the question stays open, not that the parity reverses.
+
 ## 5. The process, honestly
 
 Four times an experiment exposed a flaw in the harness rather than a property of
@@ -238,9 +276,9 @@ four changed a figure that would otherwise have been published.
 
 ## 6. What this does not show
 
-- **The agent is a scripted policy, not a real LLM agent.** The fault taxonomy
-  is drawn from real production failure modes, but transfer to a live agent is
-  untested. This is the largest gap.
+- **The LLM-agent arm is small.** 44 failed traces against the scripted arm's
+  547, so its confidence intervals are wide and it settles replication, not
+  fine-grained comparisons. It was run on one model (Claude Haiku 4.5).
 - **Exactly one fault per run.** Real failures sometimes have several
   interacting causes. This also means the label-free and gold-based signals
   coincide *by construction* — any change that helps also corrects — so
@@ -268,7 +306,7 @@ blind. It is that they plateau around half, cannot abstain, and cannot tell you
 *why*; intervention reaches 1.000 and produces evidence. The right product is
 probably both: the judge for triage, replay for confirmation.
 
-The most valuable next experiment is the one not run here — swapping the
-scripted policy for a real LLM agent over the same tool surface. It is the
-difference between "this works on a simulated agent" and "this works on an
-agent."
+The most valuable next experiment is a larger LLM-agent arm across several
+models. The 44-trace replication shows the method transfers; what it cannot
+show is whether a more capable agent -- one that recovers from faults more
+often -- changes which faults matter in practice.

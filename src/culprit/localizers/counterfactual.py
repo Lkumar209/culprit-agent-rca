@@ -32,6 +32,7 @@ from .base import Context, Cost, Verdict, timer
 def _engine(ctx: Context, trace: Trace) -> ReplayEngine:
     return ReplayEngine(
         world=ctx.world,
+        policy=ctx.policy,
         env_injector=ctx.env_injector.clone_armed() if ctx.env_injector is not None else None,
         repair_success_prob=ctx.repair_success_prob,
         seed=hash((ctx.seed, trace.trace_id)) % (2**31),

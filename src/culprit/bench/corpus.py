@@ -39,13 +39,21 @@ class Case:
     trace: Trace
     status: str                # failed | recovered | honest
 
-    def injector(self, world: World) -> Injector | None:
-        """Reconstruct the armed environment twin for replay."""
+    def injector(self, world: World, policy: Any = None) -> Injector | None:
+        """
+        Reconstruct the armed environment twin for replay.
+
+        `policy` must be the one that produced the trace. Re-arming with a
+        different policy would fire the injector on a different call
+        signature than the original run hit, so the replay environment would
+        be broken in the wrong place.
+        """
         if self.fault is None:
             return None
         inj = make_injector(self.fault, world, self.target_step, self.seed)
         # Re-run to re-arm it on the same call signature the original hit.
-        run_agent(world, _task_of(world, self.task_id), injector=inj, run_id=self.case_id)
+        run_agent(world, _task_of(world, self.task_id), policy=policy,
+                  injector=inj, run_id=self.case_id)
         return inj
 
 
@@ -65,16 +73,31 @@ def build_corpus(
     n_per_kind: int = 10,
     target_steps: tuple[int, ...] = (0, 1, 2, 3),
     faults: tuple[str, ...] | None = None,
+    policy: Any = None,
+    max_failed: int | None = None,
 ) -> tuple[World, list[Case]]:
     """Sweep tasks x faults x injection points and label every resulting trace."""
     world = build_world(seed=world_seed)
     tasks = build_tasks(world, seed=task_seed, n_per_kind=n_per_kind)
     _TASK_CACHE[id(world)] = {t.task_id: t for t in tasks}
     faults = faults or tuple(FAULT_CATALOG)
+    # Interleave the task kinds. With `max_failed` set the sweep stops
+    # early, and in task order that meant the whole corpus came from the
+    # first kind alone -- 40 failures all of one shape, with a recovery rate
+    # that said more about that shape than about the agent.
+    by_kind: dict[str, list[Task]] = {}
+    for t in tasks:
+        by_kind.setdefault(t.kind, []).append(t)
+    interleaved: list[Task] = []
+    for i in range(max((len(v) for v in by_kind.values()), default=0)):
+        for k in sorted(by_kind):
+            if i < len(by_kind[k]):
+                interleaved.append(by_kind[k][i])
+    tasks = interleaved
     cases: list[Case] = []
 
     for task in tasks:
-        honest = run_agent(world, task, run_id=f"{task.task_id}|honest")
+        honest = run_agent(world, task, policy=policy, run_id=f"{task.task_id}|honest")
         cases.append(
             Case(
                 case_id=f"{task.task_id}|honest", task_id=task.task_id, task_kind=task.kind,
@@ -86,7 +109,8 @@ def build_corpus(
             visibility = FAULT_CATALOG[fault][1]
             for step in target_steps:
                 inj = make_injector(fault, world, target_step=step, seed=step)
-                tr = run_agent(world, task, injector=inj, run_id=f"{task.task_id}|{fault}|s{step}")
+                tr = run_agent(world, task, policy=policy, injector=inj,
+                               run_id=f"{task.task_id}|{fault}|s{step}")
                 if not inj.fired:
                     continue
                 cases.append(
@@ -97,6 +121,8 @@ def build_corpus(
                         status="recovered" if tr.success else "failed",
                     )
                 )
+                if max_failed and sum(c.status == "failed" for c in cases) >= max_failed:
+                    return world, cases
     return world, cases
 
 

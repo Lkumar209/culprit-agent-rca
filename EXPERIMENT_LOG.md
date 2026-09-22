@@ -250,3 +250,40 @@ what design change came out of it.
   guidance still did not win. **Conclusion: prefix bisection is the method to
   ship** — cheapest, depth-independent, equally accurate — and guided replay is
   a reported negative result rather than the headline it was meant to be.
+
+## 2026-09-22 — exp05, a real LLM agent (the largest gap, closed)
+
+- **Purpose:** Every prior result was measured on traces produced by rule-based
+  Python. Re-run the identical pipeline with Claude Haiku 4.5 making the
+  agent's decisions, changing only `_propose` so the loop guard, step budget
+  and best-effort fallback stay identical and any difference is attributable
+  to the policy rather than the scaffolding.
+- **Cost:** ~$0.63 total for the arm — $0.05 pilot, $0.48 corpus, $0.105 for
+  localization. Replay came out at **$0.0000 marginal** because replaying a
+  prefix reproduces observation histories the agent already walked, so the
+  prompts were already cached.
+- **Two problems found before any result was trusted:**
+  1. *A grading artifact.* The model answered `$1,669.00` where gold was
+     `1669.00`, and the pilot scored 6/8. Those are correct answers in a
+     different surface form, and counting them as failures would have put
+     traces in the corpus labelled "failed" with no injected fault to localize
+     — every localizer scored against a culprit that does not exist. Added
+     `normalize_answer`; the scripted arm's numbers were bit-identical
+     afterwards, confirming it as a no-op there. Solve rate went to 8/8.
+  2. *A biased corpus.* With `max_failed` set, the sweep stopped early in task
+     order, so the first 40 failures all came from one task kind and the
+     recovery rate read 0/40. Interleaved the task kinds; recovery went to
+     55/99 and all four kinds are represented.
+- **Result — the findings replicate.** `cf_bisect` holds at **1.000 top-1 at
+  3.73 replays** against the scripted arm's 1.000 at 3.74. `first_error` again
+  scores **exactly 0.000** on silent faults. Every method's ordering is
+  preserved. Honest solve rate 5/5; 4 unparseable replies in ~870 decisions.
+- **Result — the agent is more robust than the simulation.** The LLM agent
+  recovered from 55.6% of injected faults against the scripted policy's 45.6%.
+  A real model sometimes routes around corruption a credulous rule-based agent
+  swallows. This means the main arm, if anything, *overstates* how damaging
+  silent faults are — the right direction for a limitation to point.
+- **Result — one comparison that cannot be settled here.** On LLM-agent traces
+  the judge scored 0.424 silent vs 0.727 overt, where the scripted arm had no
+  gap at all. With n=11 overt the intervals are [0.27,0.59] and [0.43,0.90] and
+  overlap heavily. Recorded as underpowered and open, not as a reversal.

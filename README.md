@@ -2,6 +2,8 @@
 
 **Root-cause localization for failed agent traces in [Arize Phoenix](https://github.com/Arize-ai/phoenix).**
 
+> 📄 **[Read the report as a PDF](docs/culprit-report.pdf)** (14 pages, with figures)
+>
 > 📖 **New here? Start with the [Cookbook](COOKBOOK.md)** — an hour-long
 > walkthrough of building this, the mistakes worth avoiding, and how to apply it
 > to your own agent. This README is the reference; the cookbook is the tutorial.
@@ -597,6 +599,8 @@ and was verified by reintroducing the bug.
 | `EXPERIMENT_LOG.md` | audit trail: every run, including the ones that found bugs |
 | `src/culprit/phoenix_experiments.py` | datasets, experiment tasks and evaluators |
 | `scripts/make_figures.py` | regenerates every figure from the saved results |
+| `scripts/build_report_pdf.py` | renders `REPORT.md` to a typeset PDF |
+| `docs/culprit-report.pdf` | the report, typeset, with figures |
 | `docs/figures/` | the figures, light and dark |
 | `docs/phoenix-ui.md` | how to capture the UI screenshot |
 
@@ -618,11 +622,13 @@ Every figure reads its numbers from `experiments/results/*.json` rather than
 having them typed in, so a chart cannot drift from the experiment behind it:
 
 ```bash
-python scripts/make_figures.py
+python scripts/make_figures.py       # regenerate the charts
+python scripts/build_report_pdf.py   # re-render the PDF
 ```
 
-Each is written twice, light and dark, and embedded with `<picture>` so GitHub
-serves the right one for your theme.
+Each chart is written twice, light and dark, and embedded with `<picture>` so
+GitHub serves the right one for your theme. The PDF collapses those to the light
+variant and renders them as vectors, so they stay sharp at any zoom.
 
 ## License
 
